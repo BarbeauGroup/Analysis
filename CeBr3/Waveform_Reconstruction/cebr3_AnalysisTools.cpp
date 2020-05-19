@@ -1469,8 +1469,21 @@ void processData(TString inputFilename, TString outputFilename){
 	analysisTree->Write("analysisTree",TObject::kOverwrite);
   }
 
-  //Close output file
+  //Close files.
   output->Close();
+  input->Close();
+
+  //Delete stuff.
+  LS_channelVector.clear();
+  LS_saturatedVector.clear();
+  LS_waveformStartTimeVector.clear();
+  LS_onsetTimeVector.clear();
+  LS_timeToBPMVector.clear();
+  LS_preTraceIntegralVector.clear();
+  LS_preTraceIntegralDevVector.clear();
+  LS_integralVector.clear();
+  LS_peakHeightVector.clear();
+  LS_psdVector.clear();
 
 }
 
