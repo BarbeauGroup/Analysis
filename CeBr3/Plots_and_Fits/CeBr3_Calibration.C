@@ -67,8 +67,41 @@ double rand_normal(double mean, double stddev)
     }
 }
 
+//Feed this the result of resolution scan to make a heat map of NLL vs alpha and beta.
+void makeNLLPlot( TString output ){
+
+	//Read our output file and fill a 2D histogram.
+	TFile* outputFile = new TFile( output );
+	TTree* outputTree = (TTree* )outputFile->Get("nllTree");
+	Double_t alpha;
+	Double_t beta;
+	Double_t nll;
+	outputTree->SetBranchAddress( "alpha", &alpha );
+	outputTree->SetBranchAddress( "beta", &beta );
+	outputTree->SetBranchAddress( "nll", &nll );
+	TH2D* nllMap = new TH2D( "nllMap", "nllMap", 40, 3, 7, 30, 0.00, 0.03 );
+	Int_t numEntries = outputTree->GetEntries();
+	for( Int_t i = 0; i < numEntries; i++ ){
+		outputTree->GetEntry(i);
+		nllMap->Fill(alpha,beta,nll);
+	}
+	
+	//Plot.
+	TCanvas* nllCanvas = new TCanvas("nllCanvas","nllCanvas");
+	nllCanvas->cd();
+	nllMap->Draw("COLZ");
+	nllCanvas->Modified();
+	nllCanvas->Update();
+	nllCanvas->WaitPrimitive();
+	
+	//Clean up.
+	outputFile->Close();
+	
+}
+	
+
 //Pass in alpha coefficient for resolution, return RooFitResult from fit
-RooFitResult getNll(Double_t alpha=4.8, Double_t beta=0.021, Int_t fitNum=0) {
+RooFitResult getNll(Double_t alpha=4.7, Double_t beta=0.015, Int_t fitNum=0) {
 
 //Don't plot canvas on screen
 gStyle->SetCanvasPreferGL(kTRUE);
@@ -300,7 +333,7 @@ void scanResolution() {
 	TFile* f = new TFile(fileName,"RECREATE");
 
 	//Set number of alphas to run fits for, minimum alpha value, alpha step value 
-	const Int_t numAlphas=30;
+	const Int_t numAlphas=40;
 	const Int_t numBetas=30;
 	const Int_t numFits=numAlphas*numBetas;
 	Double_t alphaMin=3.0;
@@ -404,34 +437,3 @@ void scanResolution() {
 	//nllTree->Delete();
 	f->Close();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
