@@ -258,8 +258,235 @@ def main():
 			return -numpy.inf
 	
 	#RooFit function that does positive log likelihood.
-	
-	
+	#This is our RooFit function that returns the POSITIVE log likelihood
+	def lnlike(theta):
+ 	 	#energyVar gets modified in loop. So far hasn't caused any issues with multiprocessing
+		global integralVar
+
+  		# Reset nllVal to zero because we'll add to this for each source we generate
+  		# an nll value for
+		nllVal=0
+  
+  		#Load theta values into parameters
+		alpha=theta[0]
+		beta=theta[1]
+		gamma=theta[2]
+		slope=theta[3]
+		offset=theta[4]
+  
+		#Load remaining theta values for each source, generate smeared pdf, calculate 
+ 		#nll value
+		for sourceNum in range(0,len(calibrationSources)):
+    
+			amplitude=theta[5+sourceNum]
+
+    			#Make ampltitude var 
+			sourceCountsVar = ROOT.RooRealVar("sourceCountsVar","sourceCountsVar",amplitude*expectedSourceCounts[sourceNum])
+			sourceCountsVar.setConstant(1)
+    
+			#Make array of sigmas from res params and sim values
+			sigmas=f(simArrays[sourceNum],alpha,beta,gamma)
+    
+			#Generate valsToGen random values for every entry in sim
+			smearedArrayList=[]
+			for i in range(0,valsToGen):
+				smearedArrayList.append(slope*(numpy.random.normal(simArrays[sourceNum],sigmas)-offset))
+    
+			smearedArrayArray=numpy.array(smearedArrayList)
+			flatArray=smearedArrayArray.flatten()
+    
+			#Make smeared data set
+			smearedSimDataSet=ROOT.RooDataSet("smearedSimDataSet","smearedSimDataSet",argSet)
+    
+			#Numpy array->TH1->RooDataHist->RooHistPdf
+			#~0.03 seconds, much faster than iterating through array to fill
+			w=numpy.full(flatArray.size,1.)
+			h=ROOT.TH1D("h","",nBins,lowerEnergyBound,upperEnergyBound)
+			h.FillN(flatArray.size,flatArray,w)
+			smearedSimDataHist=ROOT.RooDataHist("smearedSimDataHist","smearedSimDataHist",argList,h)
+			simPdf = ROOT.RooHistPdf("simPdf","simPdf",argSet,smearedSimDataHist,0) #1 specifies interpolation order
+			h.Delete()
+			del h
+    
+			##Make Model
+			pdfList = ROOT.RooArgList(bgndDataPdf,simPdf)
+			ampList = ROOT.RooArgList(scaledBgndEntriesVars[sourceNum],sourceCountsVar)
+			model = ROOT.RooAddPdf("model","model",pdfList,ampList)
+			model.fixCoefRange("fitRange")
+    
+			#Compute nll
+			nll = model.createNLL(sourceDataHists[sourceNum],
+			 ROOT.RooFit.Extended(1),
+			 ROOT.RooFit.Verbose(0),
+			 ROOT.RooFit.Range("fitRange"),
+			 ROOT.RooFit.SumCoefRange("fitRange"),
+			 ROOT.RooFit.NumCPU(1)
+			)
+
+			#Make NLL positive
+			nllVal += (-1*nll.getVal())
+    
+			if (PLOT==1):
+				try:
+					c1
+				except NameError:
+					c1=ROOT.TCanvas("c1","c1")
+      
+				#Reduce integrator for plotting, massively speeds plotting
+				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-5)
+				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-5)
+      
+				frame = integralVar.frame(lowerIntegralBound,upperIntegralBound,nBins)
+				frame.SetTitle(calibrationSources[sourceNum]+": alpha="+str(alpha)+", beta="+str(beta)+", gamma="+str(gamma)+", slope="+str(slope)+", offset="+str(offset))
+      
+				#Plot source data
+				sourceDataSets[sourceNum].plotOn(
+				 frame,
+				 ROOT.RooFit.Name("Source"),
+				 ROOT.RooFit.MarkerColor(1),
+				 ROOT.RooFit.FillColor(0)
+				)
+				#Plot components
+				model.plotOn(
+				 frame,
+				 ROOT.RooFit.Name("Bgnd"),
+				 ROOT.RooFit.Components("bgndDataPdf"),
+				 ROOT.RooFit.LineColor(ROOT.kSolid),
+				 ROOT.RooFit.FillColor(0),
+				 ROOT.RooFit.ProjWData(sourceDataSets[sourceNum])
+				)
+				model.plotOn(
+				 frame,ROOT.RooFit.Name("Sim"),
+				 ROOT.RooFit.Components("simPdf"),
+				 ROOT.RooFit.LineColor(ROOT.kRed),
+				 ROOT.RooFit.FillColor(0),
+				 ROOT.RooFit.ProjWData(sourceDataSets[sourceNum]),
+				 ROOT.RooFit.AddTo("Bgnd")
+				)
+      
+				#Draw
+				frame.Draw()
+      
+				#Add legend
+				leg = ROOT.TLegend(0.65,0.65,0.95,0.92); 
+				sourceObj = frame.findObject("Source");
+				bgndObj = frame.findObject("Bgnd");
+				simObj = frame.findObject("Sim");
+				leg.AddEntry(sourceObj,"Source","P")
+				leg.AddEntry(bgndObj,"Background","L")
+				leg.AddEntry(simObj,"Sim","L")
+				leg.Draw("same")
+      
+				#Draw
+				c1.SetLogy()
+				c1.Modified()
+				c1.Update()
+				c1.SaveAs(plotPath+"bestFit_simultaneous_"+calibrationSources[sourceNum]+"_ch"+calibrationChannel+".pdf")
+      
+				#Reset integrator for step size
+				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-7)
+				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-7)
+      
+				#Memory management for plotting
+				frame.Delete()
+				del Frame()
+      
+			#Memory management
+			smearedSimDataSet.reset()
+			smearedSimDataSet.Delete()
+			del smearedSimDataSet
+			pdfList.Delete()
+			del pdfList
+			ampList.Delete()
+			del ampList
+			sourceCountsVar.Delete()
+			del sourceCountsVar
+			smearedSimDataHist.Delete()
+			del smearedSimDataHist
+			simPdf.Delete()
+			del simPdf
+			del model
+			nll.Delete()
+			del nll
+			gc.collect()
+    
+    
+		#Return total nllval from all sources
+		return nllVal
+  
+	#Calls out roofit function, makes sure output is not infinite and parameters in allowed range 
+	def lnprob(theta):
+		lp = lnprior(theta)
+		if not numpy.isfinite(lp):
+			return -numpy.inf
+		return lp + lnlike(theta)
+
+
+
+##########################MC RUN STARTS HERE####################################
+
+	#Single-threaded
+	sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob)
+	print("Starting burn in...")
+	pos, prob, state  = sampler.run_mcmc(pos, nBurnInSteps, progress=True)
+	sampler.reset()
+	print("Burn-in complete!")
+	pos, prob, state  = sampler.run_mcmc(pos, nSteps, progress=True)
+
+	#Parallel processing
+	#with Pool() as pool:
+ 	#sampler = emcee.EnsembleSampler(nwalkers,ndim,lnprob,pool=pool)
+  	#Burn in
+  	#print("Starting burn in...")
+  	#pos, prob, state  = sampler.run_mcmc(pos, nBurnInSteps, progress=True)
+  	#print("Burn-in complete! Mean acceptance fraction: {0:.3f}".format(numpy.mean(sampler.acceptance_fraction)))
+ 	#sampler.reset()
+ 	# pos, prob, state  = sampler.run_mcmc(pos,nSteps,progress=True)
+
+###########################MC PLOTTING HERE#####################################
+#My computer doesn't have python-tk, so I can't view plots and had to save them
+#as a PDF to look at the results 
+	matplotlib.use('PDF')
+
+	#GET THE LL VALUES--From grayson's code--do this first in case plotting fails.
+	samples=sampler.flatchain
+	lnprobs = sampler.lnprobability[:,:]
+	flatLnprobs = lnprobs.reshape(-1)
+	with open(plotPath+"sampler_simultaneous_ch"+calibrationChannel+".csv", 'w') as sampleOutFile:
+		theWriter = csvlib.writer(sampleOutFile, delimiter=',')
+		for sampleLine, llval in zip(samples, flatLnprobs):
+			theWriter.writerow(numpy.append(sampleLine,llval))
+
+	#MAKE TRACE PLOTS OF EACH PARAMATER
+	fig = plt.figure(figsize=(10,ndim*2))
+	gs = fig.add_gridspec(ndim,1)
+	plt.subplots_adjust(hspace=0.4)
+	for i in range(0,ndim):
+		axes = fig.add_subplot(gs[i,:])
+		axes.plot(sampler.chain[:,:,i].T, '-', color='k', alpha=0.3)
+		axes.set_title(labels[i])
+	plt.savefig(plotPath+"traceplots_simultaneous_ch"+calibrationChannel+".pdf")
+
+	#CORNER PLOT HERE 
+	samples=sampler.flatchain
+	fig = corner.corner(samples, labels=labels, ranges=ranges, quantiles=[0.16,0.5,0.84],show_titles=True,title_kwargs={'fontsize':12})
+	fig.savefig(plotPath+"corner_simultaneous_ch"+calibrationChannel+".pdf")
+
+	#CALCULATE QUANTILES HERE
+	bestFitValues=[]
+	for i in range(ndim):
+		mcmc = numpy.percentile(sampler.chain[:,:,i],[16, 50, 84])
+		q = numpy.diff(mcmc)
+		print(labels[i]+": "+str(mcmc[1])+"+"+str(q[0])+" -"+str(q[1])+"\n")
+		bestFitValues.append(mcmc[1])
+
+	#Plot best fit 
+	PLOT=1
+	lnlike(bestFitValues) #Unpack list to arguments for our call to lnlike
+
+	#Print out stats
+	print("Mean acceptance fraction: {0:.3f}".format(numpy.mean(sampler.acceptance_fraction))+"\n")
+	print("Mean autocorrelation time: {0:.3f} steps".format(numpy.mean(sampler.get_autocorr_time(c=1,quiet=True))))
 
 #Execute main function 	
 if __name__== "__main__":
