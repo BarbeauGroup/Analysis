@@ -26,6 +26,13 @@ import corner
 ls_channelList = [8,9,10,11,12,13,14,15] #Converts BD number to channel number.
 bd_cellList = [306,314,322,330,326,318,310,302] #Converts BD number to MCNP cell number.
 
+lowerIntegralBound = 1
+upperIntegralBound = 30000
+integralVar = ROOT.RooRealVar( "integralVar","integralVar", lowerIntegralBound, upperIntegralBound )
+
+lowerEnergyBound = 1
+upperEnergyBound = 30000
+
 def main():
 
 	####################
@@ -93,10 +100,7 @@ def main():
 	###############################
 	fitRangeMin = 2000
 	fitRangeMax = 25000
-	lowerIntegralBound = 1
-	upperIntegralBound = 30000
-	lowerEnergyBound = 1
-	upperEnergyBound = 200000
+
 	
 	#####################
 	## RooFit Settings ##
@@ -128,7 +132,7 @@ def main():
 	########################
 	## Set up observables ##
 	########################
-	integralVar = ROOT.RooRealVar( "integralVar","integralVar", lowerIntegralBound, upperIntegralBound )
+	global integralVar
 	binning = ROOT.RooBinning( nBins, lowerIntegralBound, upperIntegralBound, "binning" )
 	integralVar.setBinning( binning )
 	integralVar.setRange( "fitRange", fitRangeMin, fitRangeMax )
@@ -231,7 +235,7 @@ def main():
 	#################
 	## Emcee Setup ##
 	#################
-	PLOT = 1
+	PLOT = 0
 	#Convert limits into numpy arrays.
 	pos_min = numpy.array( mins )
 	pos_max = numpy.array( maxes )
@@ -343,7 +347,6 @@ def main():
 				#Reduce integrator for plotting, massively speeds plotting
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-5)
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-5)
-      
 				frame = integralVar.frame(lowerIntegralBound,upperIntegralBound,nBins)
 				frame.SetTitle(calibrationSources[sourceNum]+": alpha="+str(alpha)+", beta="+str(beta)+", gamma="+str(gamma)+", slope="+str(slope)+", offset="+str(offset))
       
@@ -397,26 +400,26 @@ def main():
       
 				#Memory management for plotting
 				frame.Delete()
-				#del Frame()
+				#del frame()
       
 			#Memory management
 			smearedSimDataSet.reset()
-			smearedSimDataSet.Delete()
-			#del smearedSimDataSet
-			pdfList.Delete()
-			#del pdfList
-			ampList.Delete()
-			#del ampList
-			sourceCountsVar.Delete()
-			#del sourceCountsVar
-			smearedSimDataHist.Delete()
-			#del smearedSimDataHist
-			simPdf.Delete()
-			#del simPdf
-			#del model
+			#smearedSimDataSet.Delete()
+			del smearedSimDataSet
+			#pdfList.Delete()
+			del pdfList
+			#ampList.Delete()
+			del ampList
+			#sourceCountsVar.Delete()
+			del sourceCountsVar
+			#smearedSimDataHist.Delete()
+			del smearedSimDataHist
+			#simPdf.Delete()
+			del simPdf
+			del model
 			nll.Delete()
-			#del nll
-			gc.collect()
+			del nll
+			#gc.collect()
     
     
 		#Return total nllval from all sources
