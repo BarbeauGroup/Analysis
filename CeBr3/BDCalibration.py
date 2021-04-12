@@ -11,15 +11,17 @@
 #                                                                                            #
 #                          Based on conversations with S. Hedges                             #
 
+import sys
 import ROOT
 import random
 from ROOT import TGraph, TH1D, TH1F, TH2F, TCanvas, TFile, TTree
-import numpy as np
+import numpy
 import scipy as sp
 import matplotlib as mpl
 from array import array
 from tqdm import tqdm
 import emcee
+import corner
 
 ls_channelList = [8,9,10,11,12,13,14,15] #Converts BD number to channel number.
 bd_cellList = [306,314,322,330,326,318,310,302] #Converts BD number to MCNP cell number.
@@ -94,7 +96,7 @@ def main():
 	lowerIntegralBound = 1
 	upperIntegralBound = 30000
 	lowerEnergyBound = 1
-	UpperEnergyBound = 200000
+	upperEnergyBound = 200000
 	
 	#####################
 	## RooFit Settings ##
@@ -115,20 +117,20 @@ def main():
 	sourceFilenames = []
 	simFilenames = []
 	for source in calibrationSources:
-		sourceFilenames.append( calibrationFolder + "/" + source + ".root" )
+		sourceFilenames.append( calibrationFolder + source + ".root" )
 		print( "Source file is: " + sourceFilenames[-1] )
-		simFilenames.append( calibrationFolder + "/" + source + "_sim.root" )
+		simFilenames.append( calibrationFolder + source + "-sim.root" )
 		print( "Simulation file is: " + simFilenames[-1] )
 		
-	dataTreeIntegral = array.array(dataTreeIntegralBranchType,[0])
-	dataTreeChannel = array.array(dataTreeChannelBranchType,[0])
+	dataTreeIntegral = array(dataTreeIntegralBranchType,[0])
+	dataTreeChannel = array(dataTreeChannelBranchType,[0])
 	
 	########################
 	## Set up observables ##
 	########################
 	integralVar = ROOT.RooRealVar( "integralVar","integralVar", lowerIntegralBound, upperIntegralBound )
 	binning = ROOT.RooBinning( nBins, lowerIntegralBound, upperIntegralBound, "binning" )
-	integralVar.setBinning( "binning" )
+	integralVar.setBinning( binning )
 	integralVar.setRange( "fitRange", fitRangeMin, fitRangeMax )
 	argSet = ROOT.RooArgSet( integralVar )
 	argList = ROOT.RooArgList( integralVar )
@@ -170,17 +172,22 @@ def main():
 	######################
 	## Load Source Data ##
 	######################
+	expectedSourceCounts=[]
+	scaledBgndEntriesVars=[]
 	sourceDataSets = []
 	sourceDataHists = []
 	sourceCountsInFitRanges = []
 	srcDataHistPdfs = []
 	for sourceNum in range(0,len(calibrationSources)):
-		source = calibraitonSources[ sourceNum ]
+		source = calibrationSources[ sourceNum ]
+		scaledBgndEntries = bgndCountsInFitRange
+		scaledBgndEntriesVars.append(ROOT.RooRealVar("scaledBgndEntriesVar_"+source,"scaledBgndEntriesVar_"+source,scaledBgndEntries))
+		scaledBgndEntriesVars[-1].setConstant()
 		sourceFile = ROOT.TFile( sourceFilenames[ sourceNum ], "READ" )
 		sourceTree = sourceFile.Get( dataTreeName )
 		sourceTree.SetBranchAddress( dataTreeIntegralBranchName, dataTreeIntegral )
 		sourceTree.SetBranchAddress( dataTreeChannelBranchName, dataTreeChannel )
-		sourceDataSets.append(ROOT.RooDataSet( "sourceDataSet_"+source, "sourceDataSet_"+source, argSet )
+		sourceDataSets.append(ROOT.RooDataSet( "sourceDataSet_"+source, "sourceDataSet_"+source, argSet ) )
 		nSourceEntries = sourceTree.GetEntries()
 		print( "Found " + str( nSourceEntries ) + " entries in " + source + " data set." )
 		for entry in range( 0, nSourceEntries ):
@@ -190,6 +197,7 @@ def main():
 					integralVar.setVal( dataTreeIntegral[0] )
 					sourceDataSets[ sourceNum ].add( argSet )
 		sourceCountsInFitRanges.append( sourceDataSets[ sourceNum ].numEntries() )
+		expectedSourceCounts.append(sourceCountsInFitRanges[sourceNum]-bgndCountsInFitRange)
 		print( "Found "+str(sourceCountsInFitRanges[-1])+" entries for " + source + " in the fit range" )
 		( sourceDataSets[ sourceNum ].get().find("integralVar") ).setBins( nBins )
 		sourceDataHists.append( sourceDataSets[ sourceNum ].binnedClone() )
@@ -198,17 +206,17 @@ def main():
 	## Load Simulation Data ##
 	##########################
 	simTreeChannelNum = bd_cellList[ bdNum - 1 ]
-	simTreeEnergy = array.array( simTreeEnergyBranchType, [0] )
-	simTreeChannel = array.array( simTreeChannelBranchType, [0] )
+	simTreeEnergy = array( simTreeEnergyBranchType, [0] )
+	simTreeChannel = array( simTreeChannelBranchType, [0] )
 	simDataSets = []
 	simArrays = []
 	for sourceNum in range(0,len(calibrationSources)):
-		source = calibraitonSources[ sourceNum ]
+		source = calibrationSources[ sourceNum ]
 		simFile = ROOT.TFile( simFilenames[ sourceNum ], "READ" )
 		simTree = simFile.Get( simTreeName )
 		simTree.SetBranchAddress( simTreeEnergyBranchName, simTreeEnergy )
 		simTree.SetBranchAddress( simTreeChannelBranchName, simTreeChannel )
-		simDataSets.append(ROOT.RooDataSet( "simDataSet_"+source, "simDataSet_"+source, argSet )
+		simDataSets.append(ROOT.RooDataSet( "simDataSet_"+source, "simDataSet_"+source, argSet ) )
 		nSimEntries = simTree.GetEntries()
 		print( "Found " + str( nSimEntries ) + " entries in " + source + " sim data set." )
 		#Numpy way
@@ -218,12 +226,12 @@ def main():
 			if simTreeChannel[0] == simTreeChannelNum:
 				if ( simTreeEnergy[0] >= lowerEnergyBound ) and ( simTreeEnergy[0] <= upperEnergyBound ):
 					simList.append( simTreeEnergy[0] )
-		simArrays.append(numpy.array( simList )
+		simArrays.append(numpy.array( simList ))
 		
 	#################
 	## Emcee Setup ##
 	#################
-	PLOT = 0
+	PLOT = 1
 	#Convert limits into numpy arrays.
 	pos_min = numpy.array( mins )
 	pos_max = numpy.array( maxes )
@@ -237,7 +245,7 @@ def main():
 		ranges.append( entry )
 		
 	#Size of each parameter space.
-	psize = mos_max - pos_min
+	psize = pos_max - pos_min
 	
 	#Generate random values within those spaces for each walker. 
 	pos = [ pos_min + psize * numpy.random.rand( ndim ) for i in range( nwalkers ) ]
@@ -389,25 +397,25 @@ def main():
       
 				#Memory management for plotting
 				frame.Delete()
-				del Frame()
+				#del Frame()
       
 			#Memory management
 			smearedSimDataSet.reset()
 			smearedSimDataSet.Delete()
-			del smearedSimDataSet
+			#del smearedSimDataSet
 			pdfList.Delete()
-			del pdfList
+			#del pdfList
 			ampList.Delete()
-			del ampList
+			#del ampList
 			sourceCountsVar.Delete()
-			del sourceCountsVar
+			#del sourceCountsVar
 			smearedSimDataHist.Delete()
-			del smearedSimDataHist
+			#del smearedSimDataHist
 			simPdf.Delete()
-			del simPdf
-			del model
+			#del simPdf
+			#del model
 			nll.Delete()
-			del nll
+			#del nll
 			gc.collect()
     
     
