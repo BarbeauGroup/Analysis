@@ -17,11 +17,14 @@ import random
 from ROOT import TGraph, TH1D, TH1F, TH2F, TCanvas, TFile, TTree
 import numpy
 import scipy as sp
-import matplotlib as mpl
+import matplotlib
 from array import array
 from tqdm import tqdm
 import emcee
 import corner
+import csv as csvlib
+import os
+from matplotlib import pyplot as plt
 
 ls_channelList = [8,9,10,11,12,13,14,15] #Converts BD number to channel number.
 bd_cellList = [306,314,322,330,326,318,310,302] #Converts BD number to MCNP cell number.
@@ -446,13 +449,13 @@ def main():
 
 	#Parallel processing
 	#with Pool() as pool:
- 	#sampler = emcee.EnsembleSampler(nwalkers,ndim,lnprob,pool=pool)
-  	#Burn in
-  	#print("Starting burn in...")
-  	#pos, prob, state  = sampler.run_mcmc(pos, nBurnInSteps, progress=True)
-  	#print("Burn-in complete! Mean acceptance fraction: {0:.3f}".format(numpy.mean(sampler.acceptance_fraction)))
- 	#sampler.reset()
- 	# pos, prob, state  = sampler.run_mcmc(pos,nSteps,progress=True)
+ 	#	sampler = emcee.EnsembleSampler(nwalkers,ndim,lnprob,pool=pool)
+  		#Burn in
+  	#	print("Starting burn in...")
+  	#	pos, prob, state  = sampler.run_mcmc(pos, nBurnInSteps, progress=True)
+  	#	print("Burn-in complete! Mean acceptance fraction: {0:.3f}".format(numpy.mean(sampler.acceptance_fraction)))
+ 	#	sampler.reset()
+ 	#	pos, prob, state  = sampler.run_mcmc(pos,nSteps,progress=True)
 
 ###########################MC PLOTTING HERE#####################################
 #My computer doesn't have python-tk, so I can't view plots and had to save them
