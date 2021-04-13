@@ -9,7 +9,7 @@
 #                                                                                            #
 #                        Code to calibrate CeBr3 Backing Detectors.                          #
 #                                                                                            #
-#                          Based on conversations with S. Hedges                             #
+#                          Based on code from S. Hedges                                      #
 
 import sys
 import ROOT
