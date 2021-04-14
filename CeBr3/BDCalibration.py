@@ -80,10 +80,10 @@ def main():
 		labels.append("amp_"+source)
 	
 	#Minimum and maximum values for the parameters.
-	mins = [5.5,0.3,0.0,20,-10]
-	maxes = [7.5,0.7,0.5,30,10]
+	mins = [0.1,0.01,0.0,10,-200]
+	maxes = [7.5,3,0.5,30,20]
 	for source in calibrationSources:
-		mins.append(0.90)
+		mins.append(0.01)
 		maxes.append(1.01)
 
 	nwalkers = 500 #Based on Sam's code.
