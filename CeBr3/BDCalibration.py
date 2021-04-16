@@ -9,7 +9,7 @@
 #                                                                                            #
 #                        Code to calibrate CeBr3 Backing Detectors.                          #
 #                                                                                            #
-#                          Based on code from S. Hedges                                      #
+#                          Based on conversations with S. Hedges                             #
 
 import sys
 import ROOT
@@ -36,19 +36,16 @@ integralVar = ROOT.RooRealVar( "integralVar","integralVar", lowerIntegralBound, 
 lowerEnergyBound = 1
 upperEnergyBound = 30000
 
-def main():
+def fitBD( channel, folder ):
 
 	####################
 	## Get User Input ##
 	####################
 
-	calibrationFolder = sys.argv[1]
-	if not calibrationFolder.endswith('/'):
-		calibrationFolder += "/"
 	#Specify where to write plots.
-	plotPath = calibrationFolder
+	plotPath = folder
 
-	calibrationChannel = sys.argv[2]
+	calibrationChannel = channel
 
 	calibrationSources = ["na22","co60"]
 
@@ -70,25 +67,25 @@ def main():
 	## Emcee Setup ##
 	#################
 
-	ndim = 5 #Alpha, Beta, Gamma, Slope, Offset
+	ndim = 4 #Alpha, Beta, Slope, Offset
 	for source in calibrationSources:
 		ndim += 1 #Add an amplitude for each source.
 
 	#Parameter names for plots.
-	labels = ['alpha','beta','gamma','slope','offset']
+	labels = ['alpha','beta','slope','offset']
 	for source in calibrationSources:
 		labels.append("amp_"+source)
 	
 	#Minimum and maximum values for the parameters.
-	mins = [0.1,0.01,0.0,10,-200]
-	maxes = [7.5,3,0.5,30,20]
+	mins = [0,0,10,-200]
+	maxes = [7.5,3,30,20]
 	for source in calibrationSources:
 		mins.append(0.01)
 		maxes.append(1.01)
 
-	nwalkers = 500 #Based on Sam's code.
-	nBurnInSteps = 100
-	nSteps = 1000
+	nwalkers = 100 #Based on Sam's code.
+	nBurnInSteps = 500
+	nSteps = 3500
 	
 	#########################
 	## Simulation Settings ##
@@ -118,15 +115,15 @@ def main():
 	###############################
 	## Specify Data/Format Names ##
 	###############################
-	bdNum = int(calibrationChannel)
+	bdNum = int(channel)
 	dataTreeChannelNum = ls_channelList[ bdNum - 1 ]
-	bgndFilename = calibrationFolder + "bgnd.root"
+	bgndFilename = folder + "bgnd.root"
 	sourceFilenames = []
 	simFilenames = []
 	for source in calibrationSources:
-		sourceFilenames.append( calibrationFolder + source + ".root" )
+		sourceFilenames.append( folder + source + ".root" )
 		print( "Source file is: " + sourceFilenames[-1] )
-		simFilenames.append( calibrationFolder + source + "-sim.root" )
+		simFilenames.append( folder + source + "-sim.root" )
 		print( "Simulation file is: " + simFilenames[-1] )
 		
 	dataTreeIntegral = array(dataTreeIntegralBranchType,[0])
@@ -258,7 +255,7 @@ def main():
 	pos = [ pos_min + psize * numpy.random.rand( ndim ) for i in range( nwalkers ) ]
 	
 	#Define Emcee functions.
-	f = lambda x,alpha,beta,gamma: numpy.sqrt( numpy.power(alpha*x,2) + numpy.power(beta,2)*x + numpy.power(gamma,2) )
+	f = lambda x,alpha,beta: numpy.sqrt( numpy.power(alpha*x,2) + numpy.power(beta,2)*x )
 	
 	#Returns 0 if all parameters are in their allowed range, otherwise returns -infinity.
 	def lnprior( theta ):
@@ -285,22 +282,21 @@ def main():
   		#Load theta values into parameters
 		alpha=theta[0]
 		beta=theta[1]
-		gamma=theta[2]
-		slope=theta[3]
-		offset=theta[4]
+		slope=theta[2]
+		offset=theta[3]
   
 		#Load remaining theta values for each source, generate smeared pdf, calculate 
  		#nll value
 		for sourceNum in range(0,len(calibrationSources)):
     
-			amplitude=theta[5+sourceNum]
+			amplitude=theta[4+sourceNum]
 
     			#Make ampltitude var 
 			sourceCountsVar = ROOT.RooRealVar("sourceCountsVar","sourceCountsVar",amplitude*expectedSourceCounts[sourceNum])
 			sourceCountsVar.setConstant(1)
     
 			#Make array of sigmas from res params and sim values
-			sigmas=f(simArrays[sourceNum],alpha,beta,gamma)
+			sigmas=f(simArrays[sourceNum],alpha,beta)
     
 			#Generate valsToGen random values for every entry in sim
 			smearedArrayList=[]
@@ -351,7 +347,7 @@ def main():
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-5)
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-5)
 				frame = integralVar.frame(lowerIntegralBound,upperIntegralBound,nBins)
-				frame.SetTitle(calibrationSources[sourceNum]+": alpha="+str(alpha)+", beta="+str(beta)+", gamma="+str(gamma)+", slope="+str(slope)+", offset="+str(offset))
+				frame.SetTitle(calibrationSources[sourceNum]+": alpha="+str(alpha)+", beta="+str(beta)+",  slope="+str(slope)+", offset="+str(offset))
       
 				#Plot source data
 				sourceDataSets[sourceNum].plotOn(
@@ -449,13 +445,13 @@ def main():
 
 	#Parallel processing
 	#with Pool() as pool:
- 	#	sampler = emcee.EnsembleSampler(nwalkers,ndim,lnprob,pool=pool)
-  		#Burn in
-  	#	print("Starting burn in...")
-  	#	pos, prob, state  = sampler.run_mcmc(pos, nBurnInSteps, progress=True)
-  	#	print("Burn-in complete! Mean acceptance fraction: {0:.3f}".format(numpy.mean(sampler.acceptance_fraction)))
- 	#	sampler.reset()
- 	#	pos, prob, state  = sampler.run_mcmc(pos,nSteps,progress=True)
+ 	#sampler = emcee.EnsembleSampler(nwalkers,ndim,lnprob,pool=pool)
+  	#Burn in
+  	#print("Starting burn in...")
+  	#pos, prob, state  = sampler.run_mcmc(pos, nBurnInSteps, progress=True)
+  	#print("Burn-in complete! Mean acceptance fraction: {0:.3f}".format(numpy.mean(sampler.acceptance_fraction)))
+ 	#sampler.reset()
+ 	# pos, prob, state  = sampler.run_mcmc(pos,nSteps,progress=True)
 
 ###########################MC PLOTTING HERE#####################################
 #My computer doesn't have python-tk, so I can't view plots and had to save them
@@ -501,6 +497,18 @@ def main():
 	#Print out stats
 	print("Mean acceptance fraction: {0:.3f}".format(numpy.mean(sampler.acceptance_fraction))+"\n")
 	print("Mean autocorrelation time: {0:.3f} steps".format(numpy.mean(sampler.get_autocorr_time(c=1,quiet=True))))
+
+#Step through all BDs, invoking fitBDs at each step.
+def main():
+
+	#Get the location of the data and sims.
+	calibrationFolder = sys.argv[1]
+	if not calibrationFolder.endswith('/'):
+		calibrationFolder += "/"
+	#Step through backing detectors.
+	for i in range(1,8):
+		calibrationChannel = i
+		fitBD( calibrationChannel, calibrationFolder )
 
 #Execute main function 	
 if __name__== "__main__":
