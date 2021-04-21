@@ -391,7 +391,7 @@ def fitBD( channel, folder ):
 				c1.SetLogy()
 				c1.Modified()
 				c1.Update()
-				c1.SaveAs(plotPath+"bestFit_simultaneous_"+calibrationSources[sourceNum]+"_ch"+calibrationChannel+".pdf")
+				c1.SaveAs(plotPath+"bestFit_simultaneous_"+calibrationSources[sourceNum]+"_ch"+str(calibrationChannel)+".pdf")
       
 				#Reset integrator for step size
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-7)
@@ -462,7 +462,7 @@ def fitBD( channel, folder ):
 	samples=sampler.flatchain
 	lnprobs = sampler.lnprobability[:,:]
 	flatLnprobs = lnprobs.reshape(-1)
-	with open(plotPath+"sampler_simultaneous_ch"+calibrationChannel+".csv", 'w') as sampleOutFile:
+	with open(plotPath+"sampler_simultaneous_ch"+str(calibrationChannel)+".csv", 'w') as sampleOutFile:
 		theWriter = csvlib.writer(sampleOutFile, delimiter=',')
 		for sampleLine, llval in zip(samples, flatLnprobs):
 			theWriter.writerow(numpy.append(sampleLine,llval))
@@ -475,12 +475,12 @@ def fitBD( channel, folder ):
 		axes = fig.add_subplot(gs[i,:])
 		axes.plot(sampler.chain[:,:,i].T, '-', color='k', alpha=0.3)
 		axes.set_title(labels[i])
-	plt.savefig(plotPath+"traceplots_simultaneous_ch"+calibrationChannel+".pdf")
+	plt.savefig(plotPath+"traceplots_simultaneous_ch"+str(calibrationChannel)+".pdf")
 
 	#CORNER PLOT HERE 
 	samples=sampler.flatchain
 	fig = corner.corner(samples, labels=labels, ranges=ranges, quantiles=[0.16,0.5,0.84],show_titles=True,title_kwargs={'fontsize':12})
-	fig.savefig(plotPath+"corner_simultaneous_ch"+calibrationChannel+".pdf")
+	fig.savefig(plotPath+"corner_simultaneous_ch"+str(calibrationChannel)+".pdf")
 
 	#CALCULATE QUANTILES HERE
 	bestFitValues=[]
