@@ -30,8 +30,8 @@ ls_channelList = [8,9,10,11,12,13,14,15] #Converts BD number to channel number.
 bd_slopeList = [18.15,18.40,16.51,17.53,16.91,18.20,17.56,18.15] #Calibration constants for each BD.
 bd_offsetList = [-1.42,10.17,-1.82,8.14,-5.81,11.95,-3.96,4.13] #Calibration offsets for each BD.
 
-lowerEnergyBound = 0.1 #keVee
-upperEnergyBound = 10 #keVee
+lowerEnergyBound = 0 #keVee
+upperEnergyBound = 1000 #keVee
 energyVar = ROOT.RooRealVar( "energyVar","energyVar", lowerEnergyBound, upperEnergyBound )
 
 def fitNeutrons( channel, folder ):
@@ -49,30 +49,30 @@ def fitNeutrons( channel, folder ):
 	dataTreeChannelBranchType = 'i'
 	dataTreeIntegralBranchName = "LS_integral"
 	dataTreeIntegralBranchType = 'd'
-  dataTreeIntegralBranchName = "LS_psd"
-	dataTreeIntegralBranchType = 'd'
-  dataTreeIntegralBranchName = "LS_timeToBPM"
-	dataTreeIntegralBranchType = 'd'
-  dataTreeIntegralBranchName = "scatterer_integral"
-	dataTreeIntegralBranchType = 'd'
-  dataTreeIntegralBranchName = "scatterer_noise"
-	dataTreeIntegralBranchType = 'd'
+  	dataTreePSDBranchName = "LS_psd"
+	dataTreePSDBranchType = 'd'
+  	dataTreeTimingBranchName = "LS_timeToBPM"
+	dataTreeTiminglBranchType = 'd'
+  	dataTreeSignalBranchName = "scatterer_integral"
+	dataTreeSignalBranchType = 'd'
+  	dataTreeBgndBranchName = "scatterer_noise"
+	dataTreeBgndBranchType = 'd'
   
-  #Cuts to be applied to data tree.
-  time_Low = 306
-  time_High = 336
-  psd_Low = 0.26
-  psd_High = 0.6
-  integral_Low = 10000
-  integral_High = 35000
+  	#Cuts to be applied to data tree.
+  	time_Low = 306
+  	time_High = 336
+  	psd_Low = 0.26
+  	psd_High = 0.6
+  	integral_Low = 10000
+  	integral_High = 35000
 
-  #Specify sim tree name and branches.
+  	#Specify sim tree name and branches.
 	simTreeName = "totalEnergyTree"
 	simTreeEnergyBranchName = "energy"
 	simTreeEnergyBranchType = 'd'
 	simTreeChannelBranchName = "cellNum"
 	simTreeChannelBranchType = 'd'
-  simTreeChannelBranchName = "tof"
+  	simTreeChannelBranchName = "tof"
 	simTreeChannelBranchType = 'd'
 
 
@@ -80,12 +80,12 @@ def fitNeutrons( channel, folder ):
 	## Emcee Setup ##
 	#################
 
-	ndim = 5 #Alpha, Beta, Gamma, Slope, Offset
+	ndim = 5 #Alpha, Beta, Gamma, QF, Offset
 	for source in calibrationSources:
 		ndim += 1 #Add an amplitude for each source.
 
 	#Parameter names for plots.
-	labels = ['alpha','beta','gamma','slope','offset']
+	labels = ['alpha','beta','gamma','qf','offset']
 	for source in calibrationSources:
 		labels.append("amp_"+source)
 	
@@ -106,13 +106,13 @@ def fitNeutrons( channel, folder ):
 	
 	valsToGen = 10 #How many smeared data points to generate for each real one.
 	bgndPdfType = "keys" #Either keys or binned, keys ensures no zero bins.
-	nBins = 230 #specify binning if bgndPdfType is "binned".
+	nBins = 99 #specify binning if bgndPdfType is "binned".
 
 	###############################
 	## Specify Import/Fit Ranges ##
 	###############################
-	fitRangeMin = 2000
-	fitRangeMax = 25000
+	fitRangeMin = 1
+	fitRangeMax = 20
 
 	
 	#####################
@@ -130,52 +130,75 @@ def fitNeutrons( channel, folder ):
 	###############################
 	bdNum = int(channel)
 	dataTreeChannelNum = ls_channelList[ bdNum - 1 ]
-	bgndFilename = folder + "bgnd.root"
 	sourceFilenames = []
 	simFilenames = []
 	for source in calibrationSources:
-		sourceFilenames.append( folder + source + ".root" )
+		sourceFilenames.append( folder + source + ".txt" )
 		print( "Source file is: " + sourceFilenames[-1] )
-		simFilenames.append( folder + source + "-sim.root" )
+		simFilenames.append( folder + source + "-" + str(recoilChannel) + "-sim.root" )
 		print( "Simulation file is: " + simFilenames[-1] )
 		
 	dataTreeIntegral = array(dataTreeIntegralBranchType,[0])
 	dataTreeChannel = array(dataTreeChannelBranchType,[0])
+	dataTreePSD = array(dataTreePSDBranchType,[0])
+	dataTreeSignal = array(dataTreeSignalBranchType,[0])
+	DataTreeTiming = array(dataTreeTimingBranchType,[0])
 	
 	########################
 	## Set up observables ##
 	########################
-	global integralVar
-	binning = ROOT.RooBinning( nBins, lowerIntegralBound, upperIntegralBound, "binning" )
-	integralVar.setBinning( binning )
-	integralVar.setRange( "fitRange", fitRangeMin, fitRangeMax )
-	argSet = ROOT.RooArgSet( integralVar )
-	argList = ROOT.RooArgList( integralVar )
+	global energyVar
+	binning = ROOT.RooBinning( nBins, lowerEnergyBound, upperEnergyBound, "binning" )
+	energyVar.setBinning( binning )
+	energyVar.setRange( "fitRange", fitRangeMin, fitRangeMax )
+	argSet = ROOT.RooArgSet( energyVar )
+	argList = ROOT.RooArgList( energyVar )
 	#Cut used to determine amplitudes.
-	cut = "integralVar >= " + str( fitRangeMin ) + " && integralVar <= " + str( fitRangeMax )
+	cut = "energyVar >= " + str( fitRangeMin ) + " && energyVar <= " + str( fitRangeMax )
 	
-	##########################
-	## Load Background Data ##
-	##########################
-	bgndFile = ROOT.TFile( bgndFilename, "READ" )
-	bgndTree = bgndFile.Get( dataTreeName )
-	bgndTree.SetBranchAddress( dataTreeIntegralBranchName, dataTreeIntegral )
-	bgndTree.SetBranchAddress( dataTreeChannelBranchName, dataTreeChannel )
-	bgndDataSet = ROOT.RooDataSet( "bgndDataSet", "bgndDataSet", argSet )
-	nBgndEntries = bgndTree.GetEntries()
-	print( "\nFound "+str(nBgndEntries)+" in bgnd tree" )
-	for entry in range( 0, nBgndEntries ):
-			bgndTree.GetEntry(entry)
+	######################
+	## Load Source Data ##
+	######################
+	adc_to_keV = 9.65e-4
+	expectedSourceCounts=[]
+	scaledBgndEntriesVars=[]
+	sourceDataSets = []
+	sourceDataHists = []
+	sourceCountsInFitRanges = []
+	srcDataHistPdfs = []
+	bgndDataSet = ROOT.RooDataSet( "bgndDataSet_"+source, "bgndDataSet_"+source, argSet ) )
+	for sourceNum in range(0,len(calibrationSources)):
+		source = calibrationSources[ sourceNum ]
+		sourceFile = ROOT.TFile( sourceFilenames[ sourceNum ], "READ" )
+		sourceTree = sourceFile.Get( dataTreeName )
+		sourceTree.SetBranchAddress( dataTreeIntegralBranchName, dataTreeIntegral )
+		sourceTree.SetBranchAddress( dataTreeChannelBranchName, dataTreeChannel )
+		sourceTree.SetBranchAddress( dataTreePSDBranchName, dataTreePSD )
+		sourceTree.SetBranchAddress( dataTreeSignalBranchName, dataTreeSignal )
+		sourceTree.SetBranchAddress( dataTreeTimingBranchName, dataTreeTiming )
+		sourceDataSets.append(ROOT.RooDataSet( "sourceDataSet_"+source, "sourceDataSet_"+source, argSet ) )
+		nSourceEntries = sourceTree.GetEntries()
+		print( "Found " + str( nSourceEntries ) + " entries in " + source + " data set." )
+		for entry in range( 0, nSourceEntries ):
+			sourceTree.GetEntry(entry)
 			if dataTreeChannel[0] == dataTreeChannelNum:
-				if ( dataTreeIntegral[0] >= lowerIntegralBound ) and ( dataTreeIntegral[0] <= upperIntegralBound ):
-					integralVar.setVal( dataTreeIntegral[0] )
-					bgndDataSet.add( argSet )
-					
-	#Get counts in fit range.				
-	reducedBgndDataSet = bgndDataSet.reduce(ROOT.RooFit.Cut(cut))
-	bgndCountsInFitRange = reducedBgndDataSet.numEntries()
-	print( "Found "+str(bgndCountsInFitRange)+" bgnd entries in the fit range" )
+				if ( dataTreePSD[0] >= psd_Low ) and ( dataTreePSD[0] <= psd_High ):
+					if ( dataTreeTiming[0] >= time_Low ) and ( dataTreeTiming[0] <= time_High ):
+						if ( dataTreeIntegral[0] >= integral_Low ) and ( dataTreeIntegral[0] <= integral_High ):
+							if ( dataTreeSignal[0] * adc_to_keV >= lowerEnergyBound ) and ( dataTreeSignal[0] * adc_to_keV <= upperEnergyBound ):
+								energyVar.setVal( dataTreeSignal[0] * adc_to_keV )
+								sourceDataSets[ sourceNum ].add( argSet )
+								energyVar.setVal( dataTreeNoise[0] * adc_to_keV )
+								bgndDataSet.add( argSet )
+		reducedBgndDataSet = bgndDataSet.reduce(ROOT.RooFit.Cut(cut))
+		bgndCountsInFitRange = reducedBgndDataSet.numEntries() )
+		print( "Found "+str(bgndCountsInFitRange)+" bgnd entries in the fit range" )
+		sourceCountsInFitRanges.append( sourceDataSets[ sourceNum ].numEntries() )
+		print( "Found "+str(sourceCountsInFitRanges[-1])+" entries for " + source + " in the fit range" )
+		( sourceDataSets[ sourceNum ].get().find("integralVar") ).setBins( nBins )
+		sourceDataHists.append( sourceDataSets[ sourceNum ].binnedClone() )
 	
+					
 	#Make a background PDF.
 	if bgndPdfType == "binned":
 		print( "Making binned bgnd pdf.\n" )
@@ -186,38 +209,6 @@ def fitNeutrons( channel, folder ):
 		print( "Making RooKeys bgnd pdf.\n" )
 		bgndDataPdf = ROOT.RooKeysPdf("bgndDataPdf","bgndDataPdf",integralVar,bgndDataSet,ROOT.RooKeysPdf.NoMirror,1.2)
 	
-	######################
-	## Load Source Data ##
-	######################
-	expectedSourceCounts=[]
-	scaledBgndEntriesVars=[]
-	sourceDataSets = []
-	sourceDataHists = []
-	sourceCountsInFitRanges = []
-	srcDataHistPdfs = []
-	for sourceNum in range(0,len(calibrationSources)):
-		source = calibrationSources[ sourceNum ]
-		scaledBgndEntries = bgndCountsInFitRange
-		scaledBgndEntriesVars.append(ROOT.RooRealVar("scaledBgndEntriesVar_"+source,"scaledBgndEntriesVar_"+source,scaledBgndEntries))
-		scaledBgndEntriesVars[-1].setConstant()
-		sourceFile = ROOT.TFile( sourceFilenames[ sourceNum ], "READ" )
-		sourceTree = sourceFile.Get( dataTreeName )
-		sourceTree.SetBranchAddress( dataTreeIntegralBranchName, dataTreeIntegral )
-		sourceTree.SetBranchAddress( dataTreeChannelBranchName, dataTreeChannel )
-		sourceDataSets.append(ROOT.RooDataSet( "sourceDataSet_"+source, "sourceDataSet_"+source, argSet ) )
-		nSourceEntries = sourceTree.GetEntries()
-		print( "Found " + str( nSourceEntries ) + " entries in " + source + " data set." )
-		for entry in range( 0, nSourceEntries ):
-			sourceTree.GetEntry(entry)
-			if dataTreeChannel[0] == dataTreeChannelNum:
-				if ( dataTreeIntegral[0] >= lowerIntegralBound ) and ( dataTreeIntegral[0] <= upperIntegralBound ):
-					integralVar.setVal( dataTreeIntegral[0] )
-					sourceDataSets[ sourceNum ].add( argSet )
-		sourceCountsInFitRanges.append( sourceDataSets[ sourceNum ].numEntries() )
-		expectedSourceCounts.append(sourceCountsInFitRanges[sourceNum]-bgndCountsInFitRange)
-		print( "Found "+str(sourceCountsInFitRanges[-1])+" entries for " + source + " in the fit range" )
-		( sourceDataSets[ sourceNum ].get().find("integralVar") ).setBins( nBins )
-		sourceDataHists.append( sourceDataSets[ sourceNum ].binnedClone() )
 		
 	##########################
 	## Load Simulation Data ##
