@@ -27,6 +27,7 @@ import os
 from matplotlib import pyplot as plt
 
 ls_channelList = [8,9,10,11,12,13,14,15] #Converts BD number to channel number.
+bd_cellList = [306,314,322,330,326,318,310,302] #Converts BD number to MCNP cell number.
 bd_slopeList = [18.15,18.40,16.51,17.53,16.91,18.20,17.56,18.15] #Calibration constants for each BD.
 bd_offsetList = [-1.42,10.17,-1.82,8.14,-5.81,11.95,-3.96,4.13] #Calibration offsets for each BD.
 
@@ -34,14 +35,17 @@ lowerEnergyBound = 0 #keVee
 upperEnergyBound = 1000 #keVee
 energyVar = ROOT.RooRealVar( "energyVar","energyVar", lowerEnergyBound, upperEnergyBound )
 
-def fitNeutrons( channel, folder ):
-
+def main():
+	
+	#Get the location of the data and sims.
+	folder = sys.argv[1]
+	if not folder.endswith('/'):
+		folder += "/"
+	
 	#Specify where to write plots.
 	plotPath = folder
 
-	recoilChannel = channel
-
-	calibrationSources = ["neutrons"]
+	channels = [1,2,3,4,5,6,7,8] #BD Channels to fit simultaneously.
 
 	#Specify data tree name and branches.
 	dataTreeName = "analysisTree"
@@ -58,7 +62,7 @@ def fitNeutrons( channel, folder ):
   	dataTreeBgndBranchName = "scatterer_noise"
 	dataTreeBgndBranchType = 'd'
   
-  	#Cuts to be applied to data tree.
+  	#Cuts to be applied to the data.
   	time_Low = 306
   	time_High = 336
   	psd_Low = 0.26
@@ -70,34 +74,37 @@ def fitNeutrons( channel, folder ):
 	simTreeName = "totalEnergyTree"
 	simTreeEnergyBranchName = "energy"
 	simTreeEnergyBranchType = 'd'
-	simTreeChannelBranchName = "cellNum"
-	simTreeChannelBranchType = 'd'
-  	simTreeChannelBranchName = "tof"
-	simTreeChannelBranchType = 'd'
+	simTreeLS_EnergyBranchName = "ls_energy"
+	simTreeLS_EnergyBranchType = 'd'
+  	simTreeTOFBranchName = "tof"
+	simTreeTOFBranchType = 'd'
 
 
 	#################
 	## Emcee Setup ##
 	#################
 
-	ndim = 5 #Alpha, Beta, Gamma, QF, Offset
-	for source in calibrationSources:
-		ndim += 1 #Add an amplitude for each source.
+	ndim = 4 #Alpha, Beta, Gamma, Offset
+	for ch in channels: 
+		ndim += 2 #Add a qeunching factor and amplitude for each source.
 
 	#Parameter names for plots.
-	labels = ['alpha','beta','gamma','qf','offset']
-	for source in calibrationSources:
-		labels.append("amp_"+source)
+	labels = ['alpha','beta','gamma','offset']
+	for ch in channels:
+		labels.append("qf_"+str(ch)) #QF for each channel.
+		labels.append("amp_"+str(ch))
 	
 	#Minimum and maximum values for the parameters.
-	mins = [0,0,0,0.01,-200]
-	maxes = [7.5,3,1,20]
+	mins = [0,0,0,-200]
+	maxes = [7.5,3,20]
 	for source in calibrationSources:
-		mins.append(0.01)
-		maxes.append(1.01)
+		mins.append(0.01) #QF mins
+		maxes.append(1.0) #QF maxes
+		mins.append(0.01) #Amplitude mins
+		maxes.append(1.5) #Amplitude maxes
 
-	nwalkers = 100 #Based on Sam's code.
-	nBurnInSteps = 500
+	nwalkers = 500 #Based on Sam's code.
+	nBurnInSteps = 1000
 	nSteps = 3500
 	
 	#########################
@@ -111,8 +118,8 @@ def fitNeutrons( channel, folder ):
 	###############################
 	## Specify Import/Fit Ranges ##
 	###############################
-	fitRangeMin = 1
-	fitRangeMax = 20
+	fitRangeMin = 1 #keVee
+	fitRangeMax = 20 #keVee
 
 	
 	#####################
@@ -128,21 +135,11 @@ def fitNeutrons( channel, folder ):
 	###############################
 	## Specify Data/Format Names ##
 	###############################
-	bdNum = int(channel)
-	dataTreeChannelNum = ls_channelList[ bdNum - 1 ]
-	sourceFilenames = []
+	sourceFilename = folder + "neutrons.root"
 	simFilenames = []
-	for source in calibrationSources:
-		sourceFilenames.append( folder + source + ".txt" )
-		print( "Source file is: " + sourceFilenames[-1] )
-		simFilenames.append( folder + source + "-" + str(recoilChannel) + "-sim.root" )
+	for ch in channels:
+		simFilenames.append( folder + str(ch) + "-sim.root" )
 		print( "Simulation file is: " + simFilenames[-1] )
-		
-	dataTreeIntegral = array(dataTreeIntegralBranchType,[0])
-	dataTreeChannel = array(dataTreeChannelBranchType,[0])
-	dataTreePSD = array(dataTreePSDBranchType,[0])
-	dataTreeSignal = array(dataTreeSignalBranchType,[0])
-	DataTreeTiming = array(dataTreeTimingBranchType,[0])
 	
 	########################
 	## Set up observables ##
@@ -160,80 +157,78 @@ def fitNeutrons( channel, folder ):
 	## Load Source Data ##
 	######################
 	adc_to_keV = 9.65e-4
-	expectedSourceCounts=[]
-	scaledBgndEntriesVars=[]
 	sourceDataSets = []
 	sourceDataHists = []
-	sourceCountsInFitRanges = []
-	srcDataHistPdfs = []
-	bgndDataSet = ROOT.RooDataSet( "bgndDataSet_"+source, "bgndDataSet_"+source, argSet ) )
-	for sourceNum in range(0,len(calibrationSources)):
-		source = calibrationSources[ sourceNum ]
-		sourceFile = ROOT.TFile( sourceFilenames[ sourceNum ], "READ" )
-		sourceTree = sourceFile.Get( dataTreeName )
-		sourceTree.SetBranchAddress( dataTreeIntegralBranchName, dataTreeIntegral )
-		sourceTree.SetBranchAddress( dataTreeChannelBranchName, dataTreeChannel )
-		sourceTree.SetBranchAddress( dataTreePSDBranchName, dataTreePSD )
-		sourceTree.SetBranchAddress( dataTreeSignalBranchName, dataTreeSignal )
-		sourceTree.SetBranchAddress( dataTreeTimingBranchName, dataTreeTiming )
-		sourceDataSets.append(ROOT.RooDataSet( "sourceDataSet_"+source, "sourceDataSet_"+source, argSet ) )
-		nSourceEntries = sourceTree.GetEntries()
-		print( "Found " + str( nSourceEntries ) + " entries in " + source + " data set." )
-		for entry in range( 0, nSourceEntries ):
-			sourceTree.GetEntry(entry)
-			if dataTreeChannel[0] == dataTreeChannelNum:
-				if ( dataTreePSD[0] >= psd_Low ) and ( dataTreePSD[0] <= psd_High ):
-					if ( dataTreeTiming[0] >= time_Low ) and ( dataTreeTiming[0] <= time_High ):
-						if ( dataTreeIntegral[0] >= integral_Low ) and ( dataTreeIntegral[0] <= integral_High ):
-							if ( dataTreeSignal[0] * adc_to_keV >= lowerEnergyBound ) and ( dataTreeSignal[0] * adc_to_keV <= upperEnergyBound ):
-								energyVar.setVal( dataTreeSignal[0] * adc_to_keV )
-								sourceDataSets[ sourceNum ].add( argSet )
-								energyVar.setVal( dataTreeNoise[0] * adc_to_keV )
-								bgndDataSet.add( argSet )
-		reducedBgndDataSet = bgndDataSet.reduce(ROOT.RooFit.Cut(cut))
-		bgndCountsInFitRange = reducedBgndDataSet.numEntries() )
-		print( "Found "+str(bgndCountsInFitRange)+" bgnd entries in the fit range" )
+	expectedSourceCounts=[]
+	scaledBgndEntriesVars=[]
+	chDataSets = []
+	chDataHists = []
+	chCountsInFitRanges = []
+	chDataHistPdfs = []
+	bgndDataSets = []
+	bgndDataPdfs = []
+	sourceChain = ROOT.TChain( dataTreeName )
+	for line in file( sourceFilename ):
+		print "Adding file " + line
+		sourceChain.AddFile( line[:-1] )
+	print "TChain Built."
+	for chNum in range(0,len(channels)):
+		sourceDataSets.append(ROOT.RooDataSet("sourceDataSet_"+ch,"sourceDataSet_"+source,argSet))
+		bgndDataSets.append(ROOT.RooDataSet( "bgndDataSet_"+ch, "bgndDataSet_"+source, argSet ))
+		for entry in sourceChain:
+			if entry.LS_channel == ls_channelList[ ch - 1 ]:
+				if ( entry.LS_psd >= psd_Low ) and ( entry.LS_psd <= psd_High ):
+					if ( entry.LS_timeToBPM >= time_Low ) and ( entry.LS_timeToBPM <= time_High ):
+						if ( entry.LS_integral >= integral_Low ) and ( entry.LS_integral <= integral_High ):
+							if ( entry.scatterer_integral * adc_to_keV >= lowerEnergyBound ) and ( entry.scatterer_integral * adc_to_keV <= upperEnergyBound ):
+								energyVar.setVal( entry.scatterer_integral * adc_to_keV )
+								sourceDataSets[ chNum ].add( argSet )
+								energyVar.setVal( entry.scatterer_noise * adc_to_keV )
+								bgndDataSets[ chNum ].add( argSet )
+		reducedBgndDataSet = bgndDataSets[ chNum ].reduce(ROOT.RooFit.Cut(cut))
+		bgndCountsInFitRanges[ chNum ] = reducedBgndDataSet.numEntries() )
+		print( "Found "+str(bgndCountsInFitRanges[ ch ])+" bgnd entries in the fit range" )
 		sourceCountsInFitRanges.append( sourceDataSets[ sourceNum ].numEntries() )
 		print( "Found "+str(sourceCountsInFitRanges[-1])+" entries for " + source + " in the fit range" )
-		( sourceDataSets[ sourceNum ].get().find("integralVar") ).setBins( nBins )
-		sourceDataHists.append( sourceDataSets[ sourceNum ].binnedClone() )
+		( sourceDataSets[ chNum ].get().find("energyVar") ).setBins( nBins )
+		sourceDataHists.append( sourceDataSets[ chNum ].binnedClone() )
 	
 					
-	#Make a background PDF.
-	if bgndPdfType == "binned":
-		print( "Making binned bgnd pdf.\n" )
-		(bgndDataSet.get().find("integralVar")).setBins(nBins)
-		bgndDataHist = bgndDataSet.binnedClone()
-		bgndDataPdf = ROOT.RooHistPdf("bgndDataPdf","bgndDataPdf",argSet,bgndDataHist,1) #1 specifies interpolation order.
-	else:
-		print( "Making RooKeys bgnd pdf.\n" )
-		bgndDataPdf = ROOT.RooKeysPdf("bgndDataPdf","bgndDataPdf",integralVar,bgndDataSet,ROOT.RooKeysPdf.NoMirror,1.2)
-	
+		#Make a background PDF.
+		if bgndPdfType == "binned":
+			print( "Making binned bgnd pdf.\n" )
+			(bgndDataSets[ chNum ].get().find("integralVar")).setBins(nBins)
+			bgndDataHists.append(bgndDataSet.binnedClone())
+			bgndDataPdfs.append(ROOT.RooHistPdf("bgndDataPdf","bgndDataPdf",argSet,bgndDataHist,1)) #1 specifies interpolation order.
+		else:
+			print( "Making RooKeys bgnd pdf.\n" )
+			bgndDataPdfs.append(ROOT.RooKeysPdf("bgndDataPdf","bgndDataPdf",integralVar,bgndDataSet,ROOT.RooKeysPdf.NoMirror,1.2))
 		
 	##########################
 	## Load Simulation Data ##
 	##########################
-	simTreeChannelNum = bd_cellList[ bdNum - 1 ]
-	simTreeEnergy = array( simTreeEnergyBranchType, [0] )
-	simTreeChannel = array( simTreeChannelBranchType, [0] )
+	simTreeEnergy = array( simTreeEnergyBranchType, [0] ) #Energy in the CeBr3 crystal.
+	simTreeLS_Energy = array( simTreeLS_EnergyBranchType, [0] ) #Energy in the LS Backing Detectors.
+	simTreeTOF = array( simTreeTOFBranchType, [0] ) #TOF from creation to BD.
 	simDataSets = []
 	simArrays = []
-	for sourceNum in range(0,len(calibrationSources)):
-		source = calibrationSources[ sourceNum ]
-		simFile = ROOT.TFile( simFilenames[ sourceNum ], "READ" )
+	for chNum in range(0,len(channels)):
+		simFile = ROOT.TFile( simFilenames[ chNum ], "READ" )
 		simTree = simFile.Get( simTreeName )
 		simTree.SetBranchAddress( simTreeEnergyBranchName, simTreeEnergy )
-		simTree.SetBranchAddress( simTreeChannelBranchName, simTreeChannel )
-		simDataSets.append(ROOT.RooDataSet( "simDataSet_"+source, "simDataSet_"+source, argSet ) )
+		simTree.SetBranchAddress( simTreeLS_EnergyBranchName, simTreeLS_Energy )
+		simTree.SetBranchAddress( simTreeTOFBranchName, simTreeTOF )
+		simDataSets.append(ROOT.RooDataSet( "simDataSet_"+chNum, "simDataSet_"+chNum, argSet ) )
 		nSimEntries = simTree.GetEntries()
-		print( "Found " + str( nSimEntries ) + " entries in " + source + " sim data set." )
+		print( "Found " + str( nSimEntries ) + " entries in " + chNum + " sim data set." )
 		#Numpy way
 		simList = []
 		for entry in range( 0, nSimEntries ):
 			simTree.GetEntry(entry)
-			if simTreeChannel[0] == simTreeChannelNum:
-				if ( simTreeEnergy[0] >= lowerEnergyBound ) and ( simTreeEnergy[0] <= upperEnergyBound ):
-					simList.append( simTreeEnergy[0] )
+			dummyIntegral = (simTreeLS_Energy[0] * bd_slopeList[chNum-1])+bd_offsetList[chNum-1] #Use BD calibrations to mimic our cuts.
+			if ( dummyIntegral >= integral_Low ) and ( dummyIntegral <= integral_High ):
+					if ( simTreeTOF[0] < timing_Low) and ( simTreeTOF[0] > timing_High ):
+						simList.append( simTreeEnergy[0] )
 		simArrays.append(numpy.array( simList ))
 		
 	#################
@@ -259,7 +254,7 @@ def fitNeutrons( channel, folder ):
 	pos = [ pos_min + psize * numpy.random.rand( ndim ) for i in range( nwalkers ) ]
 	
 	#Define Emcee functions.
-	f = lambda x,alpha,beta: numpy.sqrt( numpy.power(alpha*x,2) + numpy.power(beta,2)*x )
+	f = lambda x,alpha,beta,gamma: numpy.sqrt( numpy.power(alpha*x,2) + numpy.power(beta,2)*x + numpy.power(gamma,2) )
 	
 	#Returns 0 if all parameters are in their allowed range, otherwise returns -infinity.
 	def lnprior( theta ):
@@ -277,7 +272,7 @@ def fitNeutrons( channel, folder ):
 	#This is our RooFit function that returns the POSITIVE log likelihood
 	def lnlike(theta):
  	 	#energyVar gets modified in loop. So far hasn't caused any issues with multiprocessing
-		global integralVar
+		global energyVar
 
   		# Reset nllVal to zero because we'll add to this for each source we generate
   		# an nll value for
@@ -286,26 +281,27 @@ def fitNeutrons( channel, folder ):
   		#Load theta values into parameters
 		alpha=theta[0]
 		beta=theta[1]
-		slope=theta[2]
+		gamma=theta[2]
 		offset=theta[3]
   
 		#Load remaining theta values for each source, generate smeared pdf, calculate 
  		#nll value
-		for sourceNum in range(0,len(calibrationSources)):
+		for chNum in range(0,len(channels)):
     
-			amplitude=theta[4+sourceNum]
+			qf=theta[chNum*2+4]
+			amplitude=theta[chNum*2+5]
 
     			#Make ampltitude var 
-			sourceCountsVar = ROOT.RooRealVar("sourceCountsVar","sourceCountsVar",amplitude*expectedSourceCounts[sourceNum])
+			sourceCountsVar = ROOT.RooRealVar("sourceCountsVar","sourceCountsVar",amplitude*expectedSourceCounts[chNum])
 			sourceCountsVar.setConstant(1)
     
 			#Make array of sigmas from res params and sim values
-			sigmas=f(simArrays[sourceNum],alpha,beta)
+			sigmas=f(simArrays[chNum],alpha,beta,gamma)
     
 			#Generate valsToGen random values for every entry in sim
 			smearedArrayList=[]
 			for i in range(0,valsToGen):
-				smearedArrayList.append(slope*(numpy.random.normal(simArrays[sourceNum],sigmas)-offset))
+				smearedArrayList.append(slope*(numpy.random.normal(simArrays[chNum],sigmas)-offset))
     
 			smearedArrayArray=numpy.array(smearedArrayList)
 			flatArray=smearedArrayArray.flatten()
@@ -324,13 +320,13 @@ def fitNeutrons( channel, folder ):
 			del h
     
 			##Make Model
-			pdfList = ROOT.RooArgList(bgndDataPdf,simPdf)
-			ampList = ROOT.RooArgList(scaledBgndEntriesVars[sourceNum],sourceCountsVar)
+			pdfList = ROOT.RooArgList(bgndDataPdfs[chNum],simPdf)
+			ampList = ROOT.RooArgList(scaledBgndEntriesVars[chNum],sourceCountsVar)
 			model = ROOT.RooAddPdf("model","model",pdfList,ampList)
 			model.fixCoefRange("fitRange")
     
 			#Compute nll
-			nll = model.createNLL(sourceDataHists[sourceNum],
+			nll = model.createNLL(sourceDataHists[chNum],
 			 ROOT.RooFit.Extended(1),
 			 ROOT.RooFit.Verbose(0),
 			 ROOT.RooFit.Range("fitRange"),
@@ -351,7 +347,7 @@ def fitNeutrons( channel, folder ):
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-5)
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-5)
 				frame = integralVar.frame(lowerIntegralBound,upperIntegralBound,nBins)
-				frame.SetTitle(calibrationSources[sourceNum]+": alpha="+str(alpha)+", beta="+str(beta)+",  slope="+str(slope)+", offset="+str(offset))
+				frame.SetTitle(calibrationSources[sourceNum]+": alpha="+str(alpha)+", beta="+str(beta)+", gamma="+star(gamma)+", offset="+str(offset))
       
 				#Plot source data
 				sourceDataSets[sourceNum].plotOn(
@@ -367,14 +363,14 @@ def fitNeutrons( channel, folder ):
 				 ROOT.RooFit.Components("bgndDataPdf"),
 				 ROOT.RooFit.LineColor(ROOT.kSolid),
 				 ROOT.RooFit.FillColor(0),
-				 ROOT.RooFit.ProjWData(sourceDataSets[sourceNum])
+				 ROOT.RooFit.ProjWData(sourceDataSets[chNum])
 				)
 				model.plotOn(
 				 frame,ROOT.RooFit.Name("Sim"),
 				 ROOT.RooFit.Components("simPdf"),
 				 ROOT.RooFit.LineColor(ROOT.kRed),
 				 ROOT.RooFit.FillColor(0),
-				 ROOT.RooFit.ProjWData(sourceDataSets[sourceNum]),
+				 ROOT.RooFit.ProjWData(sourceDataSets[chNum]),
 				 ROOT.RooFit.AddTo("Bgnd")
 				)
       
@@ -502,17 +498,6 @@ def fitNeutrons( channel, folder ):
 	print("Mean acceptance fraction: {0:.3f}".format(numpy.mean(sampler.acceptance_fraction))+"\n")
 	print("Mean autocorrelation time: {0:.3f} steps".format(numpy.mean(sampler.get_autocorr_time(c=1,quiet=True))))
 
-#Step through all BDs, invoking fitBDs at each step.
-def main():
-
-	#Get the location of the data and sims.
-	calibrationFolder = sys.argv[1]
-	if not calibrationFolder.endswith('/'):
-		calibrationFolder += "/"
-	#Step through backing detectors.
-	for i in range(1,8):
-		calibrationChannel = i
-		fitBD( calibrationChannel, calibrationFolder )
 
 #Execute main function 	
 if __name__== "__main__":
