@@ -32,6 +32,7 @@ bd_slopeList = [18.15,18.40,16.51,17.53,16.91,18.20,17.56,18.15] #Calibration co
 bd_offsetList = [-1.42,10.17,-1.82,8.14,-5.81,11.95,-3.96,4.13] #Calibration offsets for each BD.
 time_lowList = [321,314,308,306,308,311,317,325] #Timing cut lower bounds for each BD.
 time_HighList = [351,344,338,336,338,341,347,355] #Timing cut high bounds for each BD.
+bd_timingAdjustments = [315.18,305.68,299.7,328,299.34,303.18,309.05,317.61] #Adjusts from simulated tof to "real" tof. Temporary. 
 
 lowerEnergyBound = 0 #keVee
 upperEnergyBound = 1000 #keVee
@@ -55,20 +56,20 @@ def main():
 	dataTreeChannelBranchType = 'i'
 	dataTreeIntegralBranchName = "LS_integral"
 	dataTreeIntegralBranchType = 'd'
-  	dataTreePSDBranchName = "LS_psd"
+	dataTreePSDBranchName = "LS_psd"
 	dataTreePSDBranchType = 'd'
-  	dataTreeTimingBranchName = "LS_timeToBPM"
+	dataTreeTimingBranchName = "LS_timeToBPM"
 	dataTreeTiminglBranchType = 'd'
-  	dataTreeSignalBranchName = "scatterer_integral"
+	dataTreeSignalBranchName = "scatterer_integral"
 	dataTreeSignalBranchType = 'd'
-  	dataTreeBgndBranchName = "scatterer_noise"
+	dataTreeBgndBranchName = "scatterer_noise"
 	dataTreeBgndBranchType = 'd'
   
   	#Cuts to be applied to the data.
-  	psd_Low = 0.26
-  	psd_High = 0.6
-  	integral_Low = 10000
-  	integral_High = 35000
+	psd_Low = 0.26
+	psd_High = 0.6
+	integral_Low = 10000
+	integral_High = 35000
 
   	#Specify sim tree name and branches.
 	simTreeName = "totalEnergyTree"
@@ -76,7 +77,7 @@ def main():
 	simTreeEnergyBranchType = 'd'
 	simTreeLS_EnergyBranchName = "ls_energy"
 	simTreeLS_EnergyBranchType = 'd'
-  	simTreeTOFBranchName = "tof"
+	simTreeTOFBranchName = "tof"
 	simTreeTOFBranchType = 'd'
 
 
@@ -97,15 +98,15 @@ def main():
 	#Minimum and maximum values for the parameters.
 	mins = [0,0,0,-200]
 	maxes = [7.5,3,20]
-	for source in calibrationSources:
+	for ch in channels:
 		mins.append(0.01) #QF mins
 		maxes.append(1.0) #QF maxes
 		mins.append(0.01) #Amplitude mins
 		maxes.append(1.5) #Amplitude maxes
 
-	nwalkers = 500 #Based on Sam's code.
-	nBurnInSteps = 1000
-	nSteps = 3500
+	nwalkers = 55 #Based on Sam's code.
+	nBurnInSteps = 100
+	nSteps = 350
 	
 	#########################
 	## Simulation Settings ##
@@ -135,7 +136,7 @@ def main():
 	###############################
 	## Specify Data/Format Names ##
 	###############################
-	sourceFilename = folder + "neutrons.root"
+	sourceFilename = folder + "neutrons.txt"
 	simFilenames = []
 	for ch in channels:
 		simFilenames.append( folder + str(ch) + "-sim.root" )
@@ -168,15 +169,16 @@ def main():
 	bgndDataSets = []
 	bgndDataPdfs = []
 	sourceChain = ROOT.TChain( dataTreeName )
-	for line in file( sourceFilename ):
-		print "Adding file " + line
+	file = open( sourceFilename, 'r' )
+	for line in file:
+		print( "Adding file " + line )
 		sourceChain.AddFile( line[:-1] )
-	print "TChain Built."
+	print( "TChain Built." )
 	for chNum in range(0,len(channels)):
 		time_Low = time_lowList[chNum]
 		time_High = time_HighList[chNum]
-		sourceDataSets.append(ROOT.RooDataSet("sourceDataSet_"+ch,"sourceDataSet_"+source,argSet))
-		bgndDataSets.append(ROOT.RooDataSet( "bgndDataSet_"+ch, "bgndDataSet_"+source, argSet ))
+		sourceDataSets.append(ROOT.RooDataSet("sourceDataSet_"+str(chNum),"sourceDataSet_"+str(chNum),argSet))
+		bgndDataSets.append(ROOT.RooDataSet( "bgndDataSet_"+str(chNum), "bgndDataSet_"+str(chNum), argSet ))
 		for entry in sourceChain:
 			if entry.LS_channel == ls_channelList[ ch - 1 ]:
 				if ( entry.LS_psd >= psd_Low ) and ( entry.LS_psd <= psd_High ):
@@ -188,7 +190,7 @@ def main():
 								energyVar.setVal( entry.scatterer_noise * adc_to_keV )
 								bgndDataSets[ chNum ].add( argSet )
 		reducedBgndDataSet = bgndDataSets[ chNum ].reduce(ROOT.RooFit.Cut(cut))
-		bgndCountsInFitRanges[ chNum ] = reducedBgndDataSet.numEntries() )
+		bgndCountsInFitRanges[ chNum ] = reducedBgndDataSet.numEntries()
 		print( "Found "+str(bgndCountsInFitRanges[ ch ])+" bgnd entries in the fit range" )
 		sourceCountsInFitRanges.append( sourceDataSets[ sourceNum ].numEntries() )
 		print( "Found "+str(sourceCountsInFitRanges[-1])+" entries for " + source + " in the fit range" )
@@ -215,21 +217,22 @@ def main():
 	simDataSets = []
 	simArrays = []
 	for chNum in range(0,len(channels)): 
+		timingOffset = bd_timingAdjustments[chNum]
 		time_Low = time_lowList[chNum]
 		time_High = time_HighList[chNum]
 		simFile = ROOT.TFile( simFilenames[ chNum ], "READ" )
 		simTree = simFile.Get( simTreeName )
 		simTree.SetBranchAddress( simTreeEnergyBranchName, simTreeEnergy )
 		simTree.SetBranchAddress( simTreeTOFBranchName, simTreeTOF )
-		simDataSets.append(ROOT.RooDataSet( "simDataSet_"+chNum, "simDataSet_"+chNum, argSet ) )
+		simDataSets.append(ROOT.RooDataSet( "simDataSet_"+str(chNum), "simDataSet_"+str(chNum), argSet ) )
 		nSimEntries = simTree.GetEntries()
-		print( "Found " + str( nSimEntries ) + " entries in " + chNum + " sim data set." )
+		print( "Found " + str( nSimEntries ) + " entries in BD " + str(chNum) + " sim data set." )
 		#Numpy way
 		simList = []
 		for entry in range( 0, nSimEntries, 2 ): #Events are time-ordered and will go scatterer - bd - scatterer - bd etc.
 			simTree.GetEntry(entry) #Get the scatterer energy.
 			scatterer_Enrg = simTreeEnergy[0]
-			if ( simTreeTOF[0] < timing_Low) and ( simTreeTOF[0] > timing_High ):
+			if ( ( simTreeTOF[0] + timingOffset ) < timing_Low ) and ( ( simTreeTOF[0] + timingOffset ) > timing_High ):
 				simTree.GetEntry(entry+1) #Get BD energy.
 				dummyIntegral = (simTreeEnergy[0] * bd_slopeList[chNum-1])+bd_offsetList[chNum-1] #Use BD calibrations to mimic our cuts.
 				if ( dummyIntegral >= integral_Low ) and ( dummyIntegral <= integral_High ):
