@@ -30,6 +30,8 @@ ls_channelList = [8,9,10,11,12,13,14,15] #Converts BD number to channel number.
 bd_cellList = [306,314,322,330,326,318,310,302] #Converts BD number to MCNP cell number.
 bd_slopeList = [18.15,18.40,16.51,17.53,16.91,18.20,17.56,18.15] #Calibration constants for each BD.
 bd_offsetList = [-1.42,10.17,-1.82,8.14,-5.81,11.95,-3.96,4.13] #Calibration offsets for each BD.
+time_lowList = [321,314,308,306,308,311,317,325] #Timing cut lower bounds for each BD.
+time_HighList = [351,344,338,336,338,341,347,355] #Timing cut high bounds for each BD.
 
 lowerEnergyBound = 0 #keVee
 upperEnergyBound = 1000 #keVee
@@ -63,8 +65,6 @@ def main():
 	dataTreeBgndBranchType = 'd'
   
   	#Cuts to be applied to the data.
-  	time_Low = 306
-  	time_High = 336
   	psd_Low = 0.26
   	psd_High = 0.6
   	integral_Low = 10000
@@ -173,6 +173,8 @@ def main():
 		sourceChain.AddFile( line[:-1] )
 	print "TChain Built."
 	for chNum in range(0,len(channels)):
+		time_Low = time_lowList[chNum]
+		time_High = time_HighList[chNum]
 		sourceDataSets.append(ROOT.RooDataSet("sourceDataSet_"+ch,"sourceDataSet_"+source,argSet))
 		bgndDataSets.append(ROOT.RooDataSet( "bgndDataSet_"+ch, "bgndDataSet_"+source, argSet ))
 		for entry in sourceChain:
@@ -212,23 +214,26 @@ def main():
 	simTreeTOF = array( simTreeTOFBranchType, [0] ) #TOF from creation to BD.
 	simDataSets = []
 	simArrays = []
-	for chNum in range(0,len(channels)):
+	for chNum in range(0,len(channels)): 
+		time_Low = time_lowList[chNum]
+		time_High = time_HighList[chNum]
 		simFile = ROOT.TFile( simFilenames[ chNum ], "READ" )
 		simTree = simFile.Get( simTreeName )
 		simTree.SetBranchAddress( simTreeEnergyBranchName, simTreeEnergy )
-		simTree.SetBranchAddress( simTreeLS_EnergyBranchName, simTreeLS_Energy )
 		simTree.SetBranchAddress( simTreeTOFBranchName, simTreeTOF )
 		simDataSets.append(ROOT.RooDataSet( "simDataSet_"+chNum, "simDataSet_"+chNum, argSet ) )
 		nSimEntries = simTree.GetEntries()
 		print( "Found " + str( nSimEntries ) + " entries in " + chNum + " sim data set." )
 		#Numpy way
 		simList = []
-		for entry in range( 0, nSimEntries ):
-			simTree.GetEntry(entry)
-			dummyIntegral = (simTreeLS_Energy[0] * bd_slopeList[chNum-1])+bd_offsetList[chNum-1] #Use BD calibrations to mimic our cuts.
-			if ( dummyIntegral >= integral_Low ) and ( dummyIntegral <= integral_High ):
-					if ( simTreeTOF[0] < timing_Low) and ( simTreeTOF[0] > timing_High ):
-						simList.append( simTreeEnergy[0] )
+		for entry in range( 0, nSimEntries, 2 ): #Events are time-ordered and will go scatterer - bd - scatterer - bd etc.
+			simTree.GetEntry(entry) #Get the scatterer energy.
+			scatterer_Enrg = simTreeEnergy[0]
+			if ( simTreeTOF[0] < timing_Low) and ( simTreeTOF[0] > timing_High ):
+				simTree.GetEntry(entry+1) #Get BD energy.
+				dummyIntegral = (simTreeEnergy[0] * bd_slopeList[chNum-1])+bd_offsetList[chNum-1] #Use BD calibrations to mimic our cuts.
+				if ( dummyIntegral >= integral_Low ) and ( dummyIntegral <= integral_High ):
+						simList.append( scatterer_Enrg )
 		simArrays.append(numpy.array( simList ))
 		
 	#################
