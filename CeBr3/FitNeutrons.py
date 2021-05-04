@@ -30,12 +30,12 @@ ls_channelList = [8,9,10,11,12,13,14,15] #Converts BD number to channel number.
 bd_cellList = [306,314,322,330,326,318,310,302] #Converts BD number to MCNP cell number.
 bd_slopeList = [18.15,18.40,16.51,17.53,16.91,18.20,17.56,18.15] #Calibration constants for each BD.
 bd_offsetList = [-1.42,10.17,-1.82,8.14,-5.81,11.95,-3.96,4.13] #Calibration offsets for each BD.
-time_lowList = [321,314,308,306,308,311,317,325] #Timing cut lower bounds for each BD.
-time_HighList = [351,344,338,336,338,341,347,355] #Timing cut high bounds for each BD.
+time_lowList = [321,314,308,306,308,311,317,325] #Timing cut lower bounds for each BD in ns.
+time_HighList = [351,344,338,336,338,341,347,355] #Timing cut high bounds for each BD in ns.
 bd_timingAdjustments = [315.18,305.68,299.7,328,299.34,303.18,309.05,317.61] #Adjusts from simulated tof to "real" tof. Temporary. 
 
 lowerEnergyBound = 0 #keVee
-upperEnergyBound = 1000 #keVee
+upperEnergyBound = 200 #keVee
 energyVar = ROOT.RooRealVar( "energyVar","energyVar", lowerEnergyBound, upperEnergyBound )
 
 def main():
@@ -97,10 +97,10 @@ def main():
 	
 	#Minimum and maximum values for the parameters.
 	mins = [0,0,0,-200]
-	maxes = [7.5,3,20]
+	maxes = [7.5,3,5,20]
 	for ch in channels:
 		mins.append(0.01) #QF mins
-		maxes.append(1.0) #QF maxes
+		maxes.append(0.3) #QF maxes
 		mins.append(0.01) #Amplitude mins
 		maxes.append(1.5) #Amplitude maxes
 
@@ -114,13 +114,13 @@ def main():
 	
 	valsToGen = 10 #How many smeared data points to generate for each real one.
 	bgndPdfType = "keys" #Either keys or binned, keys ensures no zero bins.
-	nBins = 99 #specify binning if bgndPdfType is "binned".
+	nBins = 200 #specify binning if bgndPdfType is "binned".
 
 	###############################
 	## Specify Import/Fit Ranges ##
 	###############################
 	fitRangeMin = 1 #keVee
-	fitRangeMax = 20 #keVee
+	fitRangeMax = 10 #keVee
 
 	
 	#####################
@@ -164,7 +164,7 @@ def main():
 	scaledBgndEntriesVars=[]
 	chDataSets = []
 	chDataHists = []
-	chCountsInFitRanges = []
+	bgndCountsInFitRanges = []
 	chDataHistPdfs = []
 	bgndDataSets = []
 	bgndDataPdfs = []
@@ -175,11 +175,17 @@ def main():
 		sourceChain.AddFile( line[:-1] )
 	print( "TChain Built." )
 	for chNum in range(0,len(channels)):
+		
+		print("On BD " +str(chNum)+" of "+str(len(channels)))
 		time_Low = time_lowList[chNum]
 		time_High = time_HighList[chNum]
 		sourceDataSets.append(ROOT.RooDataSet("sourceDataSet_"+str(chNum),"sourceDataSet_"+str(chNum),argSet))
 		bgndDataSets.append(ROOT.RooDataSet( "bgndDataSet_"+str(chNum), "bgndDataSet_"+str(chNum), argSet ))
+		numEntries = sourceChain.GetEntries()
+		count = 0;
 		for entry in sourceChain:
+			if count % 10000 == 0:
+				print("On entry " + str(count) + " of " + str(numEntries))
 			if entry.LS_channel == ls_channelList[ ch - 1 ]:
 				if ( entry.LS_psd >= psd_Low ) and ( entry.LS_psd <= psd_High ):
 					if ( entry.LS_timeToBPM >= time_Low ) and ( entry.LS_timeToBPM <= time_High ):
@@ -189,11 +195,15 @@ def main():
 								sourceDataSets[ chNum ].add( argSet )
 								energyVar.setVal( entry.scatterer_noise * adc_to_keV )
 								bgndDataSets[ chNum ].add( argSet )
+			count += 1
 		reducedBgndDataSet = bgndDataSets[ chNum ].reduce(ROOT.RooFit.Cut(cut))
-		bgndCountsInFitRanges[ chNum ] = reducedBgndDataSet.numEntries()
-		print( "Found "+str(bgndCountsInFitRanges[ ch ])+" bgnd entries in the fit range" )
-		sourceCountsInFitRanges.append( sourceDataSets[ sourceNum ].numEntries() )
-		print( "Found "+str(sourceCountsInFitRanges[-1])+" entries for " + source + " in the fit range" )
+		bgndCountsInFitRanges.append(reducedBgndDataSet.numEntries())
+		print( "Found "+str(bgndCountsInFitRanges[-1])+" bgnd entries in the fit range" )
+		scaledBgndEntries = bgndCountsInFitRanges[-1]
+		scaledBgndEntriesVars.append(ROOT.RooRealVar("scaledBgndEntriesVar_"+str(chNum),"scaledBgndEntriesVar_"+str(chNum),scaledBgndEntries))
+		scaledBgndEntriesVars[-1].setConstant()
+		expectedSourceCounts.append( sourceDataSets[ chNum ].numEntries() )
+		print( "Found "+str(expectedSourceCounts[-1])+" entries for BD " + str(chNum) + " in the fit range" )
 		( sourceDataSets[ chNum ].get().find("energyVar") ).setBins( nBins )
 		sourceDataHists.append( sourceDataSets[ chNum ].binnedClone() )
 	
@@ -201,12 +211,12 @@ def main():
 		#Make a background PDF.
 		if bgndPdfType == "binned":
 			print( "Making binned bgnd pdf.\n" )
-			(bgndDataSets[ chNum ].get().find("integralVar")).setBins(nBins)
+			(bgndDataSets[ chNum ].get().find("energyVar")).setBins(nBins)
 			bgndDataHists.append(bgndDataSet.binnedClone())
-			bgndDataPdfs.append(ROOT.RooHistPdf("bgndDataPdf","bgndDataPdf",argSet,bgndDataHist,1)) #1 specifies interpolation order.
+			bgndDataPdfs.append(ROOT.RooHistPdf("bgndDataPdf"+str(chNum),"bgndDataPdf"+str(chNum),argSet,bgndDataHists[-1],1)) #1 specifies interpolation order.
 		else:
 			print( "Making RooKeys bgnd pdf.\n" )
-			bgndDataPdfs.append(ROOT.RooKeysPdf("bgndDataPdf","bgndDataPdf",integralVar,bgndDataSet,ROOT.RooKeysPdf.NoMirror,1.2))
+			bgndDataPdfs.append(ROOT.RooKeysPdf("bgndDataPdf_"+str(chNum),"bgndDataPdf_"+str(chNum),energyVar,bgndDataSets[-1],ROOT.RooKeysPdf.NoMirror,1.2))
 		
 	##########################
 	## Load Simulation Data ##
@@ -218,8 +228,8 @@ def main():
 	simArrays = []
 	for chNum in range(0,len(channels)): 
 		timingOffset = bd_timingAdjustments[chNum]
-		time_Low = time_lowList[chNum]
-		time_High = time_HighList[chNum]
+		timing_Low = time_lowList[chNum]
+		timing_High = time_HighList[chNum]
 		simFile = ROOT.TFile( simFilenames[ chNum ], "READ" )
 		simTree = simFile.Get( simTreeName )
 		simTree.SetBranchAddress( simTreeEnergyBranchName, simTreeEnergy )
@@ -232,11 +242,16 @@ def main():
 		for entry in range( 0, nSimEntries, 2 ): #Events are time-ordered and will go scatterer - bd - scatterer - bd etc.
 			simTree.GetEntry(entry) #Get the scatterer energy.
 			scatterer_Enrg = simTreeEnergy[0]
-			if ( ( simTreeTOF[0] + timingOffset ) < timing_Low ) and ( ( simTreeTOF[0] + timingOffset ) > timing_High ):
-				simTree.GetEntry(entry+1) #Get BD energy.
-				dummyIntegral = (simTreeEnergy[0] * bd_slopeList[chNum-1])+bd_offsetList[chNum-1] #Use BD calibrations to mimic our cuts.
-				if ( dummyIntegral >= integral_Low ) and ( dummyIntegral <= integral_High ):
-						simList.append( scatterer_Enrg )
+			simTOF = simTreeTOF[0] + timingOffset
+			#print( "TOF is: " + str(simTOF) )
+			#if ( simTOF > timing_Low ) and ( simTOF < timing_High ):
+				#print("Passed TOF cut.")
+				#simTree.GetEntry(entry+1) #Get BD energy.
+				#dummyIntegral = (simTreeEnergy[0] * bd_slopeList[chNum-1])+bd_offsetList[chNum-1] #Use BD calibrations to mimic our cuts.
+				#if ( dummyIntegral >= integral_Low ) and ( dummyIntegral <= integral_High ):
+						#print("Passed integral cut.")
+			simList.append( scatterer_Enrg )
+						#print("Found a simulated event with energy "+str(scatterer_enrg))
 		simArrays.append(numpy.array( simList ))
 		
 	#################
@@ -309,10 +324,13 @@ def main():
 			#Generate valsToGen random values for every entry in sim
 			smearedArrayList=[]
 			for i in range(0,valsToGen):
-				smearedArrayList.append(slope*(numpy.random.normal(simArrays[chNum],sigmas)-offset))
+				#print(str(qf*(numpy.random.normal(simArrays[chNum],sigmas)-offset)))
+				smearedArrayList.append(qf*(numpy.random.normal(simArrays[chNum],sigmas)-offset))
     
+			#print("Smeared array is: " + smearedArrayList  ) 
 			smearedArrayArray=numpy.array(smearedArrayList)
 			flatArray=smearedArrayArray.flatten()
+			#print( "Flat array is: " + flatArray )
     
 			#Make smeared data set
 			smearedSimDataSet=ROOT.RooDataSet("smearedSimDataSet","smearedSimDataSet",argSet)
@@ -354,21 +372,22 @@ def main():
 				#Reduce integrator for plotting, massively speeds plotting
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-5)
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-5)
-				frame = integralVar.frame(lowerIntegralBound,upperIntegralBound,nBins)
-				frame.SetTitle(calibrationSources[sourceNum]+": alpha="+str(alpha)+", beta="+str(beta)+", gamma="+star(gamma)+", offset="+str(offset))
-      
+				frame = energyVar.frame(fitRangeMin,fitRangeMax,fitRangeMax - fitRangeMin)
+				frame.SetTitle("Channel "+str(chNum)+" alpha="+str(alpha)+", beta="+str(beta)+", gamma="+str(gamma)+", offset="+str(offset))
+				frames.GetYAxis().SetRangeUser(0.01,100)
 				#Plot source data
-				sourceDataSets[sourceNum].plotOn(
+				sourceDataSets[chNum].plotOn(
 				 frame,
 				 ROOT.RooFit.Name("Source"),
 				 ROOT.RooFit.MarkerColor(1),
 				 ROOT.RooFit.FillColor(0)
 				)
 				#Plot components
+				bgndName = "bgndDataPdf_"+str(chNum)
 				model.plotOn(
 				 frame,
 				 ROOT.RooFit.Name("Bgnd"),
-				 ROOT.RooFit.Components("bgndDataPdf"),
+				 ROOT.RooFit.Components(bgndName),
 				 ROOT.RooFit.LineColor(ROOT.kSolid),
 				 ROOT.RooFit.FillColor(0),
 				 ROOT.RooFit.ProjWData(sourceDataSets[chNum])
@@ -399,7 +418,7 @@ def main():
 				c1.SetLogy()
 				c1.Modified()
 				c1.Update()
-				c1.SaveAs(plotPath+"bestFit_simultaneous_"+calibrationSources[sourceNum]+"_ch"+str(calibrationChannel)+".pdf")
+				c1.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(chNum)+".pdf")
       
 				#Reset integrator for step size
 				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-7)
@@ -470,7 +489,7 @@ def main():
 	samples=sampler.flatchain
 	lnprobs = sampler.lnprobability[:,:]
 	flatLnprobs = lnprobs.reshape(-1)
-	with open(plotPath+"sampler_simultaneous_ch"+str(calibrationChannel)+".csv", 'w') as sampleOutFile:
+	with open(plotPath+"sampler_simultaneous_ch"+str(chNum+1)+".csv", 'w') as sampleOutFile:
 		theWriter = csvlib.writer(sampleOutFile, delimiter=',')
 		for sampleLine, llval in zip(samples, flatLnprobs):
 			theWriter.writerow(numpy.append(sampleLine,llval))
@@ -483,12 +502,12 @@ def main():
 		axes = fig.add_subplot(gs[i,:])
 		axes.plot(sampler.chain[:,:,i].T, '-', color='k', alpha=0.3)
 		axes.set_title(labels[i])
-	plt.savefig(plotPath+"traceplots_simultaneous_ch"+str(calibrationChannel)+".pdf")
+	plt.savefig(plotPath+"traceplots_simultaneous"+".pdf")
 
 	#CORNER PLOT HERE 
 	samples=sampler.flatchain
 	fig = corner.corner(samples, labels=labels, ranges=ranges, quantiles=[0.16,0.5,0.84],show_titles=True,title_kwargs={'fontsize':12})
-	fig.savefig(plotPath+"corner_simultaneous_ch"+str(calibrationChannel)+".pdf")
+	fig.savefig(plotPath+"corner_simultaneous"+".pdf")
 
 	#CALCULATE QUANTILES HERE
 	bestFitValues=[]
