@@ -44,11 +44,13 @@ def main():
 	folder = sys.argv[1]
 	if not folder.endswith('/'):
 		folder += "/"
+
+	#Get the backing detector to calibrate.
+	bdNum = sys.argv[2]
 	
 	#Specify where to write plots.
 	plotPath = folder
 
-	channels = [1,2,3,4,5,6,7,8] #BD Channels to fit simultaneously.
 
 	#Specify data tree name and branches.
 	dataTreeName = "analysisTree"
@@ -85,24 +87,24 @@ def main():
 	## Emcee Setup ##
 	#################
 
-	ndim = 4 #Alpha, Beta, Gamma, Offset
-	for ch in channels: 
-		ndim += 2 #Add a qeunching factor and amplitude for each source.
+	ndim = 6 #Alpha, Beta, Gamma, Offset, QF, Amplitude.
+	#for ch in channels: 
+		#ndim += 2 #Add a qeunching factor and amplitude for each source.
 
 	#Parameter names for plots.
-	labels = ['alpha','beta','gamma','offset']
-	for ch in channels:
-		labels.append("qf_"+str(ch)) #QF for each channel.
-		labels.append("amp_"+str(ch))
+	labels = ['alpha','beta','gamma','offset','qf','amplitude']
+	#for ch in channels:
+		#labels.append("qf_"+str(ch)) #QF for each channel.
+		#labels.append("amp_"+str(ch))
 	
 	#Minimum and maximum values for the parameters.
-	mins = [0,0,0,-200]
-	maxes = [7.5,3,5,20]
-	for ch in channels:
-		mins.append(0.01) #QF mins
-		maxes.append(0.3) #QF maxes
-		mins.append(0.01) #Amplitude mins
-		maxes.append(1.5) #Amplitude maxes
+	mins = [0,0,0,-200,0.001,0.01]
+	maxes = [7.5,3,5,20,0.05,1.5]
+	#for ch in channels:
+		#mins.append(0.01) #QF mins
+		#maxes.append(0.3) #QF maxes
+		#mins.append(0.01) #Amplitude mins
+		#maxes.append(1.5) #Amplitude maxes
 
 	nwalkers = 55 #Based on Sam's code.
 	nBurnInSteps = 100
@@ -112,15 +114,15 @@ def main():
 	## Simulation Settings ##
 	#########################
 	
-	valsToGen = 10 #How many smeared data points to generate for each real one.
+	valsToGen = 100 #How many smeared data points to generate for each real one.
 	bgndPdfType = "keys" #Either keys or binned, keys ensures no zero bins.
-	nBins = 200 #specify binning if bgndPdfType is "binned".
+	nBins = 2000 #specify binning if bgndPdfType is "binned".
 
 	###############################
 	## Specify Import/Fit Ranges ##
 	###############################
-	fitRangeMin = 1 #keVee
-	fitRangeMax = 10 #keVee
+	fitRangeMin = 0 #keVee
+	fitRangeMax = 12 #keVee
 
 	
 	#####################
@@ -137,10 +139,10 @@ def main():
 	## Specify Data/Format Names ##
 	###############################
 	sourceFilename = folder + "neutrons.txt"
-	simFilenames = []
-	for ch in channels:
-		simFilenames.append( folder + str(ch) + "-sim.root" )
-		print( "Simulation file is: " + simFilenames[-1] )
+	simFilenames = folder + str(bdNum) + "-sim.root"
+	#for ch in channels:
+		#simFilenames.append( folder + str(ch) + "-sim.root" )
+		#print( "Simulation file is: " + simFilenames[-1] )
 	
 	########################
 	## Set up observables ##
@@ -158,65 +160,69 @@ def main():
 	## Load Source Data ##
 	######################
 	adc_to_keV = 9.65e-4
-	sourceDataSets = []
-	sourceDataHists = []
-	expectedSourceCounts=[]
-	scaledBgndEntriesVars=[]
-	chDataSets = []
-	chDataHists = []
-	bgndCountsInFitRanges = []
-	chDataHistPdfs = []
-	bgndDataSets = []
-	bgndDataPdfs = []
+	#sourceDataSets = []
+	#sourceDataHists = []
+	#expectedSourceCounts=[]
+	#scaledBgndEntriesVars=[]
+	#chDataSets = []
+	#chDataHists = []
+	#bgndCountsInFitRanges = []
+	#chDataHistPdfs = []
+	#bgndDataSets = []
+	#bgndDataPdfs = []
 	sourceChain = ROOT.TChain( dataTreeName )
 	file = open( sourceFilename, 'r' )
 	for line in file:
 		print( "Adding file " + line )
 		sourceChain.AddFile( line[:-1] )
 	print( "TChain Built." )
-	for chNum in range(0,len(channels)):
+	#for chNum in range(0,len(channels)):
 		
-		print("On BD " +str(chNum)+" of "+str(len(channels)))
-		time_Low = time_lowList[chNum]
-		time_High = time_HighList[chNum]
-		sourceDataSets.append(ROOT.RooDataSet("sourceDataSet_"+str(chNum),"sourceDataSet_"+str(chNum),argSet))
-		bgndDataSets.append(ROOT.RooDataSet( "bgndDataSet_"+str(chNum), "bgndDataSet_"+str(chNum), argSet ))
-		numEntries = sourceChain.GetEntries()
-		count = 0;
-		for entry in sourceChain:
-			if count % 10000 == 0:
-				print("On entry " + str(count) + " of " + str(numEntries))
-			if entry.LS_channel == ls_channelList[ ch - 1 ]:
-				if ( entry.LS_psd >= psd_Low ) and ( entry.LS_psd <= psd_High ):
-					if ( entry.LS_timeToBPM >= time_Low ) and ( entry.LS_timeToBPM <= time_High ):
-						if ( entry.LS_integral >= integral_Low ) and ( entry.LS_integral <= integral_High ):
-							if ( entry.scatterer_integral * adc_to_keV >= lowerEnergyBound ) and ( entry.scatterer_integral * adc_to_keV <= upperEnergyBound ):
-								energyVar.setVal( entry.scatterer_integral * adc_to_keV )
-								sourceDataSets[ chNum ].add( argSet )
-								energyVar.setVal( entry.scatterer_noise * adc_to_keV )
-								bgndDataSets[ chNum ].add( argSet )
-			count += 1
-		reducedBgndDataSet = bgndDataSets[ chNum ].reduce(ROOT.RooFit.Cut(cut))
-		bgndCountsInFitRanges.append(reducedBgndDataSet.numEntries())
-		print( "Found "+str(bgndCountsInFitRanges[-1])+" bgnd entries in the fit range" )
-		scaledBgndEntries = bgndCountsInFitRanges[-1]
-		scaledBgndEntriesVars.append(ROOT.RooRealVar("scaledBgndEntriesVar_"+str(chNum),"scaledBgndEntriesVar_"+str(chNum),scaledBgndEntries))
-		scaledBgndEntriesVars[-1].setConstant()
-		expectedSourceCounts.append( sourceDataSets[ chNum ].numEntries() )
-		print( "Found "+str(expectedSourceCounts[-1])+" entries for BD " + str(chNum) + " in the fit range" )
-		( sourceDataSets[ chNum ].get().find("energyVar") ).setBins( nBins )
-		sourceDataHists.append( sourceDataSets[ chNum ].binnedClone() )
+	#print("On BD " +str(chNum)+" of "+str(len(channels)))
+	time_Low = time_lowList[int(bdNum) - 1]
+	time_High = time_HighList[int(bdNum) - 1]
+	#sourceDataSets.append(ROOT.RooDataSet("sourceDataSet_"+str(chNum),"sourceDataSet_"+str(chNum),argSet))
+	sourceDataSet = ROOT.RooDataSet("sourceDataSet","sourceDataSet",argSet)
+	#bgndDataSets.append(ROOT.RooDataSet( "bgndDataSet_"+str(chNum), "bgndDataSet_"+str(chNum), argSet ))
+	bgndDataSet = ROOT.RooDataSet( "bgndDataSet", "bgndDataSet", argSet )
+	numEntries = sourceChain.GetEntries()
+	count = 0;
+	for entry in sourceChain:
+		if count % 10000 == 0:
+			print("On entry " + str(count) + " of " + str(numEntries))
+		if entry.LS_channel == ls_channelList[ int(bdNum) - 1 ]:
+			if ( entry.LS_psd >= psd_Low ) and ( entry.LS_psd <= psd_High ):
+				if ( entry.LS_timeToBPM >= time_Low ) and ( entry.LS_timeToBPM <= time_High ):
+					if ( entry.LS_integral >= integral_Low ) and ( entry.LS_integral <= integral_High ):
+						if ( entry.scatterer_integral * adc_to_keV >= lowerEnergyBound ) and ( entry.scatterer_integral * adc_to_keV <= upperEnergyBound ):
+							energyVar.setVal( entry.scatterer_integral * adc_to_keV )
+							sourceDataSet.add( argSet )
+							energyVar.setVal( entry.scatterer_noise * adc_to_keV )
+							bgndDataSet.add( argSet )
+		count += 1
+	#reducedBgndDataSet = bgndDataSets[ chNum ].reduce(ROOT.RooFit.Cut(cut))
+	reducedBgndDataSet = bgndDataSet.reduce(ROOT.RooFit.Cut(cut))
+	#bgndCountsInFitRanges.append(reducedBgndDataSet.numEntries())
+	bgndCountsInFitRange = reducedBgndDataSet.numEntries()
+	print( "Found "+str(bgndCountsInFitRange)+" bgnd entries in the fit range" )
+	scaledBgndEntries = bgndCountsInFitRange
+	scaledBgndEntriesVar = ROOT.RooRealVar("scaledBgndEntriesVar","scaledBgndEntriesVar",scaledBgndEntries)
+	scaledBgndEntriesVar.setConstant()
+	expectedSourceCounts = sourceDataSet.numEntries()
+	print( "Found "+str(expectedSourceCounts)+" entries for BD " + str(bdNum) + " in the fit range" )
+	( sourceDataSet.get().find("energyVar") ).setBins( nBins )
+	sourceDataHist = sourceDataSet.binnedClone()
 	
 					
-		#Make a background PDF.
-		if bgndPdfType == "binned":
-			print( "Making binned bgnd pdf.\n" )
-			(bgndDataSets[ chNum ].get().find("energyVar")).setBins(nBins)
-			bgndDataHists.append(bgndDataSet.binnedClone())
-			bgndDataPdfs.append(ROOT.RooHistPdf("bgndDataPdf"+str(chNum),"bgndDataPdf"+str(chNum),argSet,bgndDataHists[-1],1)) #1 specifies interpolation order.
-		else:
-			print( "Making RooKeys bgnd pdf.\n" )
-			bgndDataPdfs.append(ROOT.RooKeysPdf("bgndDataPdf_"+str(chNum),"bgndDataPdf_"+str(chNum),energyVar,bgndDataSets[-1],ROOT.RooKeysPdf.NoMirror,1.2))
+	#Make a background PDF.
+	if bgndPdfType == "binned":
+		print( "Making binned bgnd pdf.\n" )
+		(bgndDataSet.get().find("energyVar")).setBins(nBins)
+		bgndDataHist = bgndDataSet.binnedClone()
+		bgndDataPdfs = ROOT.RooHistPdf("bgndDataPdf","bgndDataPdf",argSet,bgndDataHist,1) #1 specifies interpolation order.
+	else:
+		print( "Making RooKeys bgnd pdf.\n" )
+		bgndDataPdf = ROOT.RooKeysPdf("bgndDataPdf","bgndDataPdf",energyVar,bgndDataSet,ROOT.RooKeysPdf.NoMirror,1.2)
 		
 	##########################
 	## Load Simulation Data ##
@@ -224,35 +230,35 @@ def main():
 	simTreeEnergy = array( simTreeEnergyBranchType, [0] ) #Energy in the CeBr3 crystal.
 	simTreeLS_Energy = array( simTreeLS_EnergyBranchType, [0] ) #Energy in the LS Backing Detectors.
 	simTreeTOF = array( simTreeTOFBranchType, [0] ) #TOF from creation to BD.
-	simDataSets = []
-	simArrays = []
-	for chNum in range(0,len(channels)): 
-		timingOffset = bd_timingAdjustments[chNum]
-		timing_Low = time_lowList[chNum]
-		timing_High = time_HighList[chNum]
-		simFile = ROOT.TFile( simFilenames[ chNum ], "READ" )
-		simTree = simFile.Get( simTreeName )
-		simTree.SetBranchAddress( simTreeEnergyBranchName, simTreeEnergy )
-		simTree.SetBranchAddress( simTreeTOFBranchName, simTreeTOF )
-		simDataSets.append(ROOT.RooDataSet( "simDataSet_"+str(chNum), "simDataSet_"+str(chNum), argSet ) )
-		nSimEntries = simTree.GetEntries()
-		print( "Found " + str( nSimEntries ) + " entries in BD " + str(chNum) + " sim data set." )
-		#Numpy way
-		simList = []
-		for entry in range( 0, nSimEntries, 2 ): #Events are time-ordered and will go scatterer - bd - scatterer - bd etc.
-			simTree.GetEntry(entry) #Get the scatterer energy.
-			scatterer_Enrg = simTreeEnergy[0]
-			simTOF = simTreeTOF[0] + timingOffset
-			#print( "TOF is: " + str(simTOF) )
-			#if ( simTOF > timing_Low ) and ( simTOF < timing_High ):
-				#print("Passed TOF cut.")
-				#simTree.GetEntry(entry+1) #Get BD energy.
-				#dummyIntegral = (simTreeEnergy[0] * bd_slopeList[chNum-1])+bd_offsetList[chNum-1] #Use BD calibrations to mimic our cuts.
-				#if ( dummyIntegral >= integral_Low ) and ( dummyIntegral <= integral_High ):
-						#print("Passed integral cut.")
-			simList.append( scatterer_Enrg )
-						#print("Found a simulated event with energy "+str(scatterer_enrg))
-		simArrays.append(numpy.array( simList ))
+	#simDataSets = []
+	simArray = []
+	#for chNum in range(0,len(channels)): 
+	timingOffset = bd_timingAdjustments[int(bdNum)-1]
+	timing_Low = time_lowList[int(bdNum)-1]
+	timing_High = time_HighList[int(bdNum)-1]
+	simFile = ROOT.TFile( simFilenames, "READ" )
+	simTree = simFile.Get( simTreeName )
+	simTree.SetBranchAddress( simTreeEnergyBranchName, simTreeEnergy )
+	simTree.SetBranchAddress( simTreeTOFBranchName, simTreeTOF )
+	simDataSet = ROOT.RooDataSet( "simDataSet", "simDataSet", argSet )
+	nSimEntries = simTree.GetEntries()
+	print( "Found " + str( nSimEntries ) + " entries in BD " + str(bdNum) + " sim data set." )
+	#Numpy way
+	simList = []
+	for entry in range( 0, nSimEntries, 2 ): #Events are time-ordered and will go scatterer - bd - scatterer - bd etc.
+		simTree.GetEntry(entry) #Get the scatterer energy.
+		scatterer_Enrg = simTreeEnergy[0]
+		simTOF = simTreeTOF[0] + timingOffset
+		#print( "TOF is: " + str(simTOF) )
+		#if ( simTOF > timing_Low ) and ( simTOF < timing_High ):
+			#print("Passed TOF cut.")
+			#simTree.GetEntry(entry+1) #Get BD energy.
+			#dummyIntegral = (simTreeEnergy[0] * bd_slopeList[chNum-1])+bd_offsetList[chNum-1] #Use BD calibrations to mimic our cuts.
+			#if ( dummyIntegral >= integral_Low ) and ( dummyIntegral <= integral_High ):
+				#print("Passed integral cut.")
+		simList.append( scatterer_Enrg )
+		#print("Found a simulated event with energy "+str(scatterer_enrg))
+	simArray = numpy.array( simList )
 		
 	#################
 	## Emcee Setup ##
@@ -309,124 +315,130 @@ def main():
   
 		#Load remaining theta values for each source, generate smeared pdf, calculate 
  		#nll value
-		for chNum in range(0,len(channels)):
+		#for chNum in range(0,len(channels)):
     
-			qf=theta[chNum*2+4]
-			amplitude=theta[chNum*2+5]
+		qf=theta[4]
+		amplitude=theta[5]
 
-    			#Make ampltitude var 
-			sourceCountsVar = ROOT.RooRealVar("sourceCountsVar","sourceCountsVar",amplitude*expectedSourceCounts[chNum])
-			sourceCountsVar.setConstant(1)
+    		#Make ampltitude var 
+		sourceCountsVar = ROOT.RooRealVar("sourceCountsVar","sourceCountsVar",amplitude*expectedSourceCounts)
+		#sourceCountsVar.setConstant(1)
     
-			#Make array of sigmas from res params and sim values
-			sigmas=f(simArrays[chNum],alpha,beta,gamma)
+		#Make array of sigmas from res params and sim values
+		sigmas=f(simArray,alpha,beta,gamma)
     
-			#Generate valsToGen random values for every entry in sim
-			smearedArrayList=[]
-			for i in range(0,valsToGen):
-				#print(str(qf*(numpy.random.normal(simArrays[chNum],sigmas)-offset)))
-				smearedArrayList.append(qf*(numpy.random.normal(simArrays[chNum],sigmas)-offset))
+		#Generate valsToGen random values for every entry in sim
+		smearedArrayList=[]
+		for i in range(0,valsToGen):
+			#print(str(qf*(numpy.random.normal(simArrays[chNum],sigmas)-offset)))
+			smearedArrayList.append(qf*(numpy.random.normal(simArray,sigmas)-offset))
     
-			#print("Smeared array is: " + smearedArrayList  ) 
-			smearedArrayArray=numpy.array(smearedArrayList)
-			flatArray=smearedArrayArray.flatten()
-			#print( "Flat array is: " + flatArray )
+		#print("Smeared array is: " + smearedArrayList  ) 
+		smearedArrayArray=numpy.array(smearedArrayList)
+		flatArray=smearedArrayArray.flatten()
+		#print( "Flat array is: " + flatArray )
     
-			#Make smeared data set
-			smearedSimDataSet=ROOT.RooDataSet("smearedSimDataSet","smearedSimDataSet",argSet)
+		#Make smeared data set
+		smearedSimDataSet=ROOT.RooDataSet("smearedSimDataSet","smearedSimDataSet",argSet)
     
-			#Numpy array->TH1->RooDataHist->RooHistPdf
-			#~0.03 seconds, much faster than iterating through array to fill
-			w=numpy.full(flatArray.size,1.)
-			h=ROOT.TH1D("h","",nBins,lowerEnergyBound,upperEnergyBound)
-			h.FillN(flatArray.size,flatArray,w)
-			smearedSimDataHist=ROOT.RooDataHist("smearedSimDataHist","smearedSimDataHist",argList,h)
-			simPdf = ROOT.RooHistPdf("simPdf","simPdf",argSet,smearedSimDataHist,0) #1 specifies interpolation order
-			h.Delete()
-			del h
+		#Numpy array->TH1->RooDataHist->RooHistPdf
+		#~0.03 seconds, much faster than iterating through array to fill
+		w=numpy.full(flatArray.size,1.)
+		h=ROOT.TH1D("h","",nBins,lowerEnergyBound,upperEnergyBound)
+		h.FillN(flatArray.size,flatArray,w)
+		smearedSimDataHist=ROOT.RooDataHist("smearedSimDataHist","smearedSimDataHist",argList,h)
+		simPdf = ROOT.RooHistPdf("simPdf","simPdf",argSet,smearedSimDataHist,0) #1 specifies interpolation order
+		h.Delete()
+		del h
     
-			##Make Model
-			pdfList = ROOT.RooArgList(bgndDataPdfs[chNum],simPdf)
-			ampList = ROOT.RooArgList(scaledBgndEntriesVars[chNum],sourceCountsVar)
-			model = ROOT.RooAddPdf("model","model",pdfList,ampList)
-			model.fixCoefRange("fitRange")
+		#Make Model
+		pdfList = ROOT.RooArgList(bgndDataPdf,simPdf)
+		ampList = ROOT.RooArgList(scaledBgndEntriesVar,sourceCountsVar)
+		model = ROOT.RooAddPdf("model","model",pdfList,ampList)
+		model.fixCoefRange("fitRange")
     
-			#Compute nll
-			nll = model.createNLL(sourceDataHists[chNum],
-			 ROOT.RooFit.Extended(1),
-			 ROOT.RooFit.Verbose(0),
-			 ROOT.RooFit.Range("fitRange"),
-			 ROOT.RooFit.SumCoefRange("fitRange"),
-			 ROOT.RooFit.NumCPU(1)
+		#Compute nll
+		nll = model.createNLL(sourceDataHist,
+			ROOT.RooFit.Extended(1),
+			ROOT.RooFit.Verbose(0),
+			ROOT.RooFit.Range("fitRange"),
+			ROOT.RooFit.SumCoefRange("fitRange"),
+			ROOT.RooFit.NumCPU(1)
+		)
+
+		#Make NLL positive
+		nllVal += (-1*nll.getVal())
+    
+		if (PLOT==1):
+			try:
+				c1
+			except NameError:
+				c1=ROOT.TCanvas("c1","c1")
+      
+			#Reduce integrator for plotting, massively speeds plotting
+			ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-5)
+			ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-5)
+			frame = energyVar.frame(0,20,20)
+			frame.SetTitle("Channel "+str(bdNum)+" alpha="+str(alpha)+", beta="+str(beta)+", gamma="+str(gamma)+", offset="+str(offset))
+			#Plot source data
+			sourceDataSet.plotOn(
+				frame,
+				ROOT.RooFit.Name("Source"),
+				ROOT.RooFit.MarkerColor(1),
+				ROOT.RooFit.FillColor(0),
+				ROOT.RooFit.Range("fitRange"),
+				ROOT.RooFit.Binning(binning)
 			)
-
-			#Make NLL positive
-			nllVal += (-1*nll.getVal())
-    
-			if (PLOT==1):
-				try:
-					c1
-				except NameError:
-					c1=ROOT.TCanvas("c1","c1")
+			#Plot components
+			bgndName = "bgndDataPdf"
+			model.plotOn(
+				frame,
+				ROOT.RooFit.Name("Bgnd"),
+				ROOT.RooFit.Components(bgndName),
+				ROOT.RooFit.LineColor(ROOT.kSolid),
+				ROOT.RooFit.FillColor(0),
+				ROOT.RooFit.ProjWData(sourceDataSet),
+				ROOT.RooFit.Range("fitRange")
+			)
+			model.plotOn(
+				frame,ROOT.RooFit.Name("Sim"),
+				ROOT.RooFit.Components("simPdf"),
+				ROOT.RooFit.LineColor(ROOT.kRed),
+				ROOT.RooFit.FillColor(0),
+				ROOT.RooFit.ProjWData(sourceDataSet),
+				ROOT.RooFit.AddTo("Bgnd"),
+				ROOT.RooFit.Range("fitRange")
+			)
       
-				#Reduce integrator for plotting, massively speeds plotting
-				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-5)
-				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-5)
-				frame = energyVar.frame(fitRangeMin,fitRangeMax,fitRangeMax - fitRangeMin)
-				frame.SetTitle("Channel "+str(chNum)+" alpha="+str(alpha)+", beta="+str(beta)+", gamma="+str(gamma)+", offset="+str(offset))
-				frames.GetYAxis().SetRangeUser(0.01,100)
-				#Plot source data
-				sourceDataSets[chNum].plotOn(
-				 frame,
-				 ROOT.RooFit.Name("Source"),
-				 ROOT.RooFit.MarkerColor(1),
-				 ROOT.RooFit.FillColor(0)
-				)
-				#Plot components
-				bgndName = "bgndDataPdf_"+str(chNum)
-				model.plotOn(
-				 frame,
-				 ROOT.RooFit.Name("Bgnd"),
-				 ROOT.RooFit.Components(bgndName),
-				 ROOT.RooFit.LineColor(ROOT.kSolid),
-				 ROOT.RooFit.FillColor(0),
-				 ROOT.RooFit.ProjWData(sourceDataSets[chNum])
-				)
-				model.plotOn(
-				 frame,ROOT.RooFit.Name("Sim"),
-				 ROOT.RooFit.Components("simPdf"),
-				 ROOT.RooFit.LineColor(ROOT.kRed),
-				 ROOT.RooFit.FillColor(0),
-				 ROOT.RooFit.ProjWData(sourceDataSets[chNum]),
-				 ROOT.RooFit.AddTo("Bgnd")
-				)
+			#Draw
+			#frame.GetYaxis.SetRangeUser(0.1,1e5)
+			frame.Draw()
+			frame.SetMinimum(0.1)
+			frame.SetMaximum(1e4)
       
-				#Draw
-				frame.Draw()
+			#Add legend
+			leg = ROOT.TLegend(0.65,0.65,0.95,0.92); 
+			sourceObj = frame.findObject("Source");
+			bgndObj = frame.findObject("Bgnd");
+			simObj = frame.findObject("Sim");
+			leg.AddEntry(sourceObj,"Source","P")
+			leg.AddEntry(bgndObj,"Background","L")
+			leg.AddEntry(simObj,"Sim","L")
+			leg.Draw("same")
       
-				#Add legend
-				leg = ROOT.TLegend(0.65,0.65,0.95,0.92); 
-				sourceObj = frame.findObject("Source");
-				bgndObj = frame.findObject("Bgnd");
-				simObj = frame.findObject("Sim");
-				leg.AddEntry(sourceObj,"Source","P")
-				leg.AddEntry(bgndObj,"Background","L")
-				leg.AddEntry(simObj,"Sim","L")
-				leg.Draw("same")
+			#Draw
+			c1.SetLogy()
+			c1.Modified()
+			c1.Update()
+			c1.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(bdNum)+".pdf")
       
-				#Draw
-				c1.SetLogy()
-				c1.Modified()
-				c1.Update()
-				c1.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(chNum)+".pdf")
+			#Reset integrator for step size
+			ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-7)
+			ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-7)
       
-				#Reset integrator for step size
-				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-7)
-				ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-7)
-      
-				#Memory management for plotting
-				frame.Delete()
-				#del frame()
+			#Memory management for plotting
+			frame.Delete("a")
+			#del frame()
       
 			#Memory management
 			smearedSimDataSet.reset()
@@ -489,7 +501,7 @@ def main():
 	samples=sampler.flatchain
 	lnprobs = sampler.lnprobability[:,:]
 	flatLnprobs = lnprobs.reshape(-1)
-	with open(plotPath+"sampler_simultaneous_ch"+str(chNum+1)+".csv", 'w') as sampleOutFile:
+	with open(plotPath+"sampler_simultaneous_ch"+str(bdNum)+".csv", 'w') as sampleOutFile:
 		theWriter = csvlib.writer(sampleOutFile, delimiter=',')
 		for sampleLine, llval in zip(samples, flatLnprobs):
 			theWriter.writerow(numpy.append(sampleLine,llval))
