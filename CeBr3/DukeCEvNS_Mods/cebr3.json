@@ -1,0 +1,64 @@
+{
+  "units": "mass in tons, distance in cm, power in MW, timewindow in ns",
+  "material": "CeBr3",
+  "mass": 0.01457,
+  "distance": 1930.0,
+  "knustep":0.1,
+  "formfactor": {
+    "type": "klein",
+    "nvrfact": 1.0, 
+    "narfact": 1.0, 
+    "pvrfact": 1.0, 
+    "parfact": 1.0,
+    "ffcomment1":"these for Helm",
+    "nvsfact": 0.9, 
+    "nasfact": 0.9, 
+    "pvsfact": 0.9, 
+    "pasfact": 0.9,
+    "ffcomment2":"these for Klein",
+    "nvak": 0.7, 
+    "naak": 0.7, 
+    "pvak": 0.7, 
+    "paak": 0.7,
+    "nvskin": 0.0, 
+    "naskin": 0.0, 
+    "pvskin": 0.0, 
+    "paskin": 0.0
+  },
+  "convolved": 1,
+  "flux": {
+    "power": 1.4,
+    "nusperprotonperflavor": 0.09,
+    "mevperproton": 1010.0,
+    "hours": 5000.0
+  },
+  "timewindow": {
+   "start": 1400.0,
+   "end": 7400.0
+  },  
+  "detectorresponse": {
+    "efftype": "eee",
+    "efficiencyfile": "none",
+    "stepthresh": 8.0,
+    "upperthresh": 77.0,
+    "qftype": "poly",
+    "qfname": "cebr3",
+    "qcperkeVee": 60.0,
+    "qcbinning": 1, 
+    "qcsmearing": "poisson",
+    "gsname": "none",
+    "qcgsname": "cebr3"
+  },
+  "couplings": {
+    "pdgyear": 2014,
+    "chargeradiusfactor": "giunti"
+  },
+  "magmom": {
+    "nue": 0.0,
+    "nuebar": 0.0,
+    "numu": 0.0,
+    "numubar": 0.0,
+    "nutau": 0.0,
+    "nutaubar": 0.0
+  }           
+}
