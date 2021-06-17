@@ -32,7 +32,8 @@
 using namespace std;
 using namespace RooFit;
 
-void fitNeutrons( Int_t bdNum ){
+//Supply this with the path you want to save your plots in and a base name for them, but not the ".png" bit.
+void fitNeutrons( Int_t bdNum, TString outputFilename ){
 
   //////////////////////////
   // Setting Up Variables //
@@ -51,7 +52,7 @@ void fitNeutrons( Int_t bdNum ){
 
   //Energy range to fit.
   Long64_t fitMin=0;
-  Long64_t fitMax=10;
+  Long64_t fitMax=8;
   Long64_t keVMin = 0;
   Long64_t keVMax = 100;
   Double_t binning = 500;
@@ -216,7 +217,7 @@ void fitNeutrons( Int_t bdNum ){
   //Fit.
   model.fitTo(sourceData,Save(1),Verbose(3),Range(fitMin,fitMax),PrintEvalErrors(10));
 
-  //Plot Model
+  //Plot Model - make a binned version but use the amplitudes from the actual fit. 
   keV.setBins(binning);
   nNoise.setConstant();
   nSignal.setConstant();
@@ -225,9 +226,9 @@ void fitNeutrons( Int_t bdNum ){
   RooHistPdf binnedGamma("binnedGamma","Binned Gamma", keV, *gammaHist, 0);
   RooAddPdf binnedModel("binnedModel","Binned Model", RooArgSet(noiseHistPdf, binnedGamma),RooArgSet(nNoise,nSignal));
   sourceData.plotOn(keVFrame,Name("sourceData"),MarkerColor(1),FillColor(0),Binning(binning),Range(fitMin,fitMax));
-  binnedModel.plotOn(keVFrame,Name("noiseHistPdf"),Components(noiseHistPdf),LineColor(4),FillColor(0),LineWidth(3),Range(fitMin,fitMax));
-  binnedModel.plotOn(keVFrame,Name("binnedGamma"),Components(binnedGamma),LineColor(2),FillColor(46),LineWidth(3),Range(fitMin,fitMax));
-  binnedModel.plotOn(keVFrame,Name("binnedModel"),LineColor(8),FillColor(0),LineWidth(3),Range(fitMin,fitMax));
+  binnedModel.plotOn(keVFrame,Name("noiseHistPdf"),Components(noiseHistPdf),LineColor(33),FillColor(0),LineWidth(3),Range(fitMin,fitMax));
+  binnedModel.plotOn(keVFrame,Name("binnedGamma"),Components(binnedGamma),LineColor(9),FillColor(46),LineWidth(3),Range(fitMin,fitMax));
+  binnedModel.plotOn(keVFrame,Name("binnedModel"),LineColor(30),FillColor(0),LineWidth(3),Range(fitMin,fitMax));
   RooHist* resHist = keVFrame->residHist();
   keVFrame->GetXaxis()->SetTitle("Energy [keVee]");
   keVFrame->GetYaxis()->SetTitle("Counts / 0.2 keV");
@@ -240,10 +241,16 @@ void fitNeutrons( Int_t bdNum ){
 
   //Draw
   keVFrame->Draw();
+  auto legend = new TLegend(0.62,0.67,0.87,0.85);
+  //legend->SetHeader("Fit Components","C");
+  legend->AddEntry("binnedModel","Total Model","l");
+  legend->AddEntry("noiseHistPdf","Background Model","l");
+  legend->AddEntry("binnedGamma","Nuclear Recoils","l");
+  legend->Draw();
   c1->SetLogy();
   c1->Modified();
   c1->Update();
-  TString imagePath = "/var/phy/project/phil/cma46/CeBr3/cebr3-qf-analysis/Plots/BestFit-Neutrons-BD8.pdf";
+  TString imagePath = outputFilename + ".png";
   c1->Print(imagePath);
 
   //Draw residuals.
@@ -270,7 +277,7 @@ void fitNeutrons( Int_t bdNum ){
   c2->Modified();
   c2->Update();
 
-  TString resPath = "/var/phy/project/phil/cma46/CeBr3/cebr3-qf-analysis/Plots/Residuals-Neutrons-BD8.pdf";
+  TString resPath = outputFilename + "-residuals.png";
   c2->Print(resPath);
 
 }
