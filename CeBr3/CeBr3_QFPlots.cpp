@@ -34,10 +34,9 @@ C. Awe - 3/26/2018
 
 using namespace RooFit; 
 
+static const numPoints = 8; //Number of points in our data set.
+
 void makePlots(){
-	
-	//Number of points we have in out data set & other dummy vars.
-	int numPoints = 8; //Number of points in our data set.
 	
 	//Declare arrays to hold our data.
 	double eVals[numPoints]; //Recoil energy.
@@ -180,22 +179,31 @@ void makePlots(){
 	TCanvas* c1 = new TCanvas("c1","c1");
 	c1->Divide(2,2);
 	c1->cd(1);
-	gamma_graph->Draw("P");
+	gamma_graph->Draw("AP");
+	c1->Modified();
+	c1->Update();
 	c1->cd(2);
-	beta_graph->Draw("P");
+	beta_graph->Draw("AP");
+	c1->Modified();
+	c1->Update();
 	c1->cd(3);
-	signal_graph->Draw("P");
+	signal_graph->Draw("AP");
+	c1->Modified();
+	c1->Update();
 	c1->cd(4);
-	noise_graph->Draw("P");
+	noise_graph->Draw("AP");
 	c1->Modified();
 	c1->Update();
 	
 	TCanvas* c2 = new TCanvas("c2","Quenching Factor in CeBr3");
 	c2->cd();
-	qf_graph->Draw("P");
+	qf_graph->Draw("AP");
 	c2->Modified();
 	c2->Update();
-	//c1->WaitPrimitive();
+	
+	TString imagePath = "/var/phy/project/phil/cma46/CeBr3/cebr3-qf-analysis/Plots/";
+	c1->Print(imagePath + "Parameter_Plots.png");
+	c2->Print(imagePath + "QF_Plot.png");
 	
 }
 	
