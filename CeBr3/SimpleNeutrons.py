@@ -23,6 +23,7 @@ import emcee
 import corner
 import csv as csvlib
 import os
+import gc
 from matplotlib import pyplot as plt
 
 ls_channelList = [8,9,10,11,12,13,14,15] #Converts BD number to channel number.
@@ -87,7 +88,7 @@ def main():
 	#MC Stats
 	nwalkers = 55 #Based on Sam's code.
 	nBurnInSteps = 300
-	nSteps = 1800
+	nSteps = 1300
 
 	###############################
 	## Specify Import/Fit Ranges ##
@@ -160,6 +161,9 @@ def main():
 	print( "Found "+str(expectedSourceCounts)+" entries for BD " + str(bdNum) + " in the fit range" )
 	( sourceDataSet.get().find("energyVar") ).setBins( nBins )
 	sourceDataHist = sourceDataSet.binnedClone()
+	( bgndDataSet.get().find("energyVar") ).setBins( nBins )
+	bgndDataHist = bgndDataSet.binnedClone()
+	bgndDataPdf = ROOT.RooHistPdf("bgndDataPdf","Background",energyVar,bgndDataHist,0) #1 specifies interpolation order
 
 	#################
 	## Emcee Setup ##
@@ -182,6 +186,22 @@ def main():
 	
 	#Generate random values within those spaces for each walker. 
 	pos = [ pos_min + psize * numpy.random.rand( ndim ) for i in range( nwalkers ) ]
+
+	#Declare Vars for our PDFs.
+	sourceCountsVar = ROOT.RooRealVar("sourceCountsVar","Signal",400,20000)
+	scaledBgndEntriesVar = ROOT.RooRealVar("scaledBgndEntriesVar","Background",10000,100000)
+	gammaVar = ROOT.RooRealVar("gammaVar","Gamma",1,20)
+	betaVar = ROOT.RooRealVar("betaVar","Beta",0.03,1)
+	muVar = ROOT.RooRealVar("muVar","Mu",0,0,1)
+	muVar.setConstant(1)
+
+	#Build a model.
+	gammaPdf = ROOT.RooGamma("gammaPdf","Gamma PDF",energyVar, gammaVar, betaVar, muVar)
+	#Make Model
+	pdfList = ROOT.RooArgList(bgndDataPdf,gammaPdf)
+	ampList = ROOT.RooArgList(scaledBgndEntriesVar,sourceCountsVar)
+	model = ROOT.RooAddPdf("model","model",pdfList,ampList)
+	model.fixCoefRange("fitRange")
 
 	#Returns 0 if all parameters are in their allowed range, otherwise returns -infinity.
 	def lnprior( theta ):
@@ -212,25 +232,14 @@ def main():
 		Background=theta[3]
 
     		#Make vars and pdfs.
-		sourceCountsVar = ROOT.RooRealVar("sourceCountsVar","Signal",Signal)
+		sourceCountsVar.setVal(Signal)
 		sourceCountsVar.setConstant(1)
-		scaledBgndEntriesVar = ROOT.RooRealVar("scaledBgndEntriesVar","Background",Background)
+		scaledBgndEntriesVar.setVal(Background)
 		scaledBgndEntriesVar.setConstant(1)
-		( bgndDataSet.get().find("energyVar") ).setBins( nBins )
-		bgndDataHist = bgndDataSet.binnedClone()
-		bgndDataPdf = ROOT.RooHistPdf("bgndDataPdf","Background",energyVar,bgndDataHist,0) #1 specifies interpolation order
-		gammaVar = ROOT.RooRealVar("gammaVar","Gamma",Gamma,1,20)
+		gammaVar.setVal(Gamma)
 		gammaVar.setConstant(1)
-		betaVar = ROOT.RooRealVar("betaVar","Beta",Beta,0.03,1)
+		betaVar.setVal(Beta)
 		betaVar.setConstant(1)
-		muVar = ROOT.RooRealVar("muVar","Mu",0,0,1)
-		muVar.setConstant(1)
-		gammaPdf = ROOT.RooGamma("gammaPdf","Gamma PDF",energyVar, gammaVar, betaVar, muVar)
-		#Make Model
-		pdfList = ROOT.RooArgList(bgndDataPdf,gammaPdf)
-		ampList = ROOT.RooArgList(scaledBgndEntriesVar,sourceCountsVar)
-		model = ROOT.RooAddPdf("model","model",pdfList,ampList)
-		model.fixCoefRange("fitRange")
     
 		#Compute nll
 		nll = model.createNLL(sourceDataHist,
@@ -244,24 +253,26 @@ def main():
 		#Make NLL positive
 		nllVal += (-1*nll.getVal())
 
-		#Make a binned version of the model.
-		gammaData = gammaPdf.generate(energyVar,100000)
-		gammaHist = gammaData.binnedClone()
-		binnedGamma = ROOT.RooHistPdf("binnedGamma","Binned Gamma", energyVar, gammaHist, 0)
-		binnedPdfList = ROOT.RooArgList(bgndDataPdf,binnedGamma)
-		binnedModel = ROOT.RooAddPdf("binnedModel","Binned Model", binnedPdfList,ampList)
     
 		if (PLOT==1):
 			try:
 				c1
 			except NameError:
 				c1=ROOT.TCanvas("c1","c1")
+
+			#Make a binned version of the model.
+			gammaData = gammaPdf.generate(energyVar,100000)
+			gammaHist = gammaData.binnedClone()
+			binnedGamma = ROOT.RooHistPdf("binnedGamma","Binned Gamma", energyVar, gammaHist, 0)
+			binnedPdfList = ROOT.RooArgList(bgndDataPdf,binnedGamma)
+			binnedModel = ROOT.RooAddPdf("binnedModel","Binned Model", binnedPdfList,ampList)
       
 			#Reduce integrator for plotting, massively speeds plotting
 			ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-5)
 			ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-5)
 			frame = energyVar.frame(0,8,8)
-			frame.SetTitle("Backing Detector "+str(bdNum)+", Recoil Energy = "+str(enrgList[bdNum-1])+" keVnr")
+			#energy = enrgList[bdNum-1]
+			frame.SetTitle("Backing Detector "+str(bdNum))
 			frame.GetXaxis().SetTitle("Energy [keVee]")
 			frame.GetYaxis().SetTitle("Counts / 0.2 keV")
 			frame.GetXaxis().CenterTitle();
@@ -294,7 +305,7 @@ def main():
 			)
 			binnedModel.plotOn(
 				frame,
-				ROOT.RooFit.LineColor(30),
+				ROOT.RooFit.LineColor(39),
 				ROOT.RooFit.FillColor(0),
 				ROOT.RooFit.ProjWData(sourceDataSet)
 			)
@@ -340,27 +351,16 @@ def main():
 			#Memory management for plotting
 			frame.Delete("a")
 			#del frame()
-      
-			#Memory management
-			del pdfList
-			del ampList
-			del sourceCountsVar
-			del scaledBgndEntriesVar
-			del bgndDataHist
-			del bgndDataPdf
-			del model
 			del gammaData
 			del gammaHist
 			del binnedGamma
 			del binnedPdfList
 			del binnedModel
-			nll.Delete()
-			del nll
-			del gammaVar
-			del betaVar
-			del muVar
-			del gammaPdf
-			#gc.collect()
+
+		#More memory management.
+		nll.Delete("a")
+		del nll
+		gc.collect()
     
     
 		#Return total nllval from all sources
@@ -444,7 +444,6 @@ def main():
 #Execute main function 	
 if __name__== "__main__":
   main()		
-
 
 
 
