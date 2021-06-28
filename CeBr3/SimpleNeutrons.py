@@ -29,7 +29,6 @@ from matplotlib import pyplot as plt
 ls_channelList = [8,9,10,11,12,13,14,15] #Converts BD number to channel number.
 time_lowList = [321,314,308,306,308,311,317,325] #Timing cut lower bounds for each BD in ns.
 time_HighList = [351,344,338,336,338,341,347,355] #Timing cut high bounds for each BD in ns.
-bd_timingAdjustments = [315.18,305.68,299.7,328,299.34,303.18,309.05,317.61] #Adjusts from simulated tof to "real" tof. Temporary. 
 enrgList = [71.6,43.1,18.0,2.1,8.9,25.9,57.7,86.7] #Recoil energy for each backing detector.
 
 lowerEnergyBound = 0 #keVee
@@ -47,7 +46,7 @@ def main():
 	bdNum = sys.argv[2]
 	
 	#Specify where to write plots.
-	plotPath = folder
+	plotPath = "/var/phy/project/phil/cma46/CeBr3/cebr3-qf-analysis/Plots/"
 
 
 	#Specify data tree name and branches.
@@ -82,8 +81,8 @@ def main():
 	labels = ['Gamma','Beta','Signal','Bgnd']
 
 	#Minimum and maximum values for the parameters.
-	mins = [0,0,400,10000]
-	maxes = [20,1,20000,100000]
+	mins = [1,0.1,400,0]
+	maxes = [6,1.0,2000,40000]
 
 	#MC Stats
 	nwalkers = 55 #Based on Sam's code.
@@ -126,7 +125,7 @@ def main():
 	######################
 	## Load Source Data ##
 	######################
-	adc_to_keV = 9.65e-4
+	adc_to_keV = 2.00114445451e-3;
 	sourceChain = ROOT.TChain( dataTreeName )
 	file = open( sourceFilename, 'r' )
 	for line in file:
@@ -142,14 +141,14 @@ def main():
 	for entry in sourceChain:
 		if count % 10000 == 0:
 			print("On entry " + str(count) + " of " + str(numEntries))
-		if entry.LS_channel == ls_channelList[ int(bdNum) - 1 ]:
+		if ( entry.LS_integral >= integral_Low ) and ( entry.LS_integral <= integral_High ):
 			if ( entry.LS_psd >= psd_Low ) and ( entry.LS_psd <= psd_High ):
 				if ( entry.LS_timeToBPM >= time_Low ) and ( entry.LS_timeToBPM <= time_High ):
-					if ( entry.LS_integral >= integral_Low ) and ( entry.LS_integral <= integral_High ):
+					energyVar.setVal( entry.scatterer_noise * adc_to_keV )
+					bgndDataSet.add( argSet )
+					if entry.LS_channel == ls_channelList[ int(bdNum) - 1 ]:
 						energyVar.setVal( entry.scatterer_integral * adc_to_keV )
 						sourceDataSet.add( argSet )
-						energyVar.setVal( entry.scatterer_noise * adc_to_keV )
-						bgndDataSet.add( argSet )
 		count += 1
 	reducedBgndDataSet = bgndDataSet.reduce(ROOT.RooFit.Cut(cut))
 	bgndCountsInFitRange = reducedBgndDataSet.numEntries()
@@ -259,6 +258,8 @@ def main():
 				c1
 			except NameError:
 				c1=ROOT.TCanvas("c1","c1")
+			#c1.Divide(1,2)
+			#c1.cd(1)
 
 			#Make a binned version of the model.
 			gammaData = gammaPdf.generate(energyVar,100000)
@@ -305,7 +306,8 @@ def main():
 			)
 			binnedModel.plotOn(
 				frame,
-				ROOT.RooFit.LineColor(39),
+				ROOT.RooFit.Name("Total Model"),
+				ROOT.RooFit.LineColor(30),
 				ROOT.RooFit.FillColor(0),
 				ROOT.RooFit.ProjWData(sourceDataSet)
 			)
@@ -319,10 +321,10 @@ def main():
       
 			#Add legend
 			leg = ROOT.TLegend(0.62,0.67,0.87,0.85); 
-			sourceObj = frame.findObject("Data");
+			sourceObj = frame.findObject("Total Model");
 			bgndObj = frame.findObject("Background");
 			recObj = frame.findObject("Nuclear Recoils");
-			leg.AddEntry(sourceObj,"Source","P")
+			leg.AddEntry(sourceObj,"Total Model","L")
 			leg.AddEntry(bgndObj,"Background","L")
 			leg.AddEntry(recObj,"Nuclear Recoils","L")
 			leg.Draw("same")
@@ -331,18 +333,44 @@ def main():
 			c1.SetLogy()
 			c1.Modified()
 			c1.Update()
-			c1.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(bdNum)+".pdf")
+			c1.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(bdNum)+".png")
 				
 			#Make Residuals Plot.
-			#resFrame = energyVar.frame(0,8,8)
-			#res.SetTitle("Channel "+str(bdNum)+" Residuals")
-			#resFrame.GetXaxis().CenterTitle();
-			#resFrame.GetXaxis().SetRangeUser(fitMin,fitMax);
-			#resFrame.GetXaxis().SetTitle("keVee");
-			#resFrame.GetYaxis().CenterTitle();
-			#resFrame.GetYaxis().SetTitle("Counts / 0.2 keV");
-			#resFrame.addPlotable(resHist,"p");
-			#resFrame.Draw(); 
+			c2=ROOT.TCanvas("c2","c2")
+			c2.cd()
+			resFrame = energyVar.frame(0,8,8)
+			resFrame.SetTitle("")
+			resFrame.GetXaxis().CenterTitle();
+			resFrame.GetXaxis().SetTitle("keVee");
+			resFrame.GetYaxis().CenterTitle();
+			resFrame.GetYaxis().SetTitle("Counts / 0.2 keV");
+			resFrame.addPlotable(resHist,"p");
+			resFrame.Draw(); 
+			#c2.SetLogy()
+			c2.Modified()
+			c2.Update()
+			c2.SaveAs(plotPath+"residuals_ch"+str(bdNum)+".png")
+
+			#Make a linear scale plot.
+			c3=ROOT.TCanvas("c3","c3")
+			c3.cd()
+			frame.Draw()
+			leg.Draw("same")
+			frame.SetMinimum(0)
+			frame.SetMaximum(400)
+			c3.Modified()
+			c3.Update()
+			c3.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(bdNum)+"linear.png")
+      
+			#Add legend
+			leg = ROOT.TLegend(0.62,0.67,0.87,0.85); 
+			sourceObj = frame.findObject("Total Model");
+			bgndObj = frame.findObject("Background");
+			recObj = frame.findObject("Nuclear Recoils");
+			leg.AddEntry(sourceObj,"Total Model","L")
+			leg.AddEntry(bgndObj,"Background","L")
+			leg.AddEntry(recObj,"Nuclear Recoils","L")
+			leg.Draw("same")
       
 			#Reset integrator for step size
 			ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-7)
@@ -360,7 +388,7 @@ def main():
 		#More memory management.
 		nll.Delete("a")
 		del nll
-		gc.collect()
+		#gc.collect()
     
     
 		#Return total nllval from all sources
@@ -417,12 +445,12 @@ def main():
 		axes = fig.add_subplot(gs[i,:])
 		axes.plot(sampler.chain[:,:,i].T, '-', color='k', alpha=0.3)
 		axes.set_title(labels[i])
-	plt.savefig(plotPath+"traceplots_simultaneous_bd"+str(bdNum)+".pdf")
+	plt.savefig(plotPath+"traceplots_simultaneous_bd"+str(bdNum)+".png")
 
 	#CORNER PLOT HERE 
 	samples=sampler.flatchain
 	fig = corner.corner(samples, labels=labels, ranges=ranges, quantiles=[0.16,0.5,0.84],show_titles=True,title_kwargs={'fontsize':12})
-	fig.savefig(plotPath+"corner_simultaneous_bd"+str(bdNum)+".pdf")
+	fig.savefig(plotPath+"corner_simultaneous_bd"+str(bdNum)+".png")
 
 	#CALCULATE QUANTILES HERE
 	bestFitValues=[]
