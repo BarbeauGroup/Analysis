@@ -37,7 +37,7 @@ energyVar = ROOT.RooRealVar( "energyVar","energyVar", lowerEnergyBound, upperEne
 
 def main():
 	
-	#Get the location of the data and sims.
+	#Get the location of the .txt file with paths to the data.
 	folder = sys.argv[1]
 	if not folder.endswith('/'):
 		folder += "/"
@@ -46,7 +46,7 @@ def main():
 	bdNum = sys.argv[2]
 	
 	#Specify where to write plots.
-	plotPath = "/var/phy/project/phil/cma46/CeBr3/cebr3-qf-analysis/Plots/"
+	plotPath = "/var/phy/project/phil/cma46/CeBr3/cebr3-qf-analysis/Plots/Emcee_Fits/Production_Run_2/"
 
 
 	#Specify data tree name and branches.
@@ -65,35 +65,35 @@ def main():
 	dataTreeBgndBranchType = 'd'
   
   	#Cuts to be applied to the data.
-	psd_Low = 0.26
-	psd_High = 0.6
-	integral_Low = 10000
-	integral_High = 35000
+	psd_Low = 0.26 #Production run 1 value.
+	psd_High = 0.6 #Production run 1 value.
+	integral_Low = 10000 #Production run 1 value.
+	integral_High = 35000 #Production run 1 value.
 
 	#################
 	## Emcee Setup ##
 	#################
 
-	ndim = 4 #Gamma, Beta, Signal Amplitude, Background Amplitude.
+	ndim = 7 #Gamma, Beta, Signal Amplitude, Background Amplitude.
 	nBins = 500
 
 	#Parameter names for plots.
-	labels = ['Gamma','Beta','Signal','Bgnd']
+	labels = ['Gamma 1','Beta 1','Signal 1','Bgnd']
 
 	#Minimum and maximum values for the parameters.
-	mins = [1,0.1,400,0]
-	maxes = [6,1.0,2000,40000]
+	mins = [0,0.1,0,0]
+	maxes = [5,1,6000,30000]
 
 	#MC Stats
 	nwalkers = 55 #Based on Sam's code.
-	nBurnInSteps = 300
-	nSteps = 1300
+	nBurnInSteps = 500
+	nSteps = 2000
 
 	###############################
 	## Specify Import/Fit Ranges ##
 	###############################
 	fitRangeMin = 0 #keVee
-	fitRangeMax = 8 #keVee
+	fitRangeMax = 8 #keVee. 8 for PR1, 12 for PR2.
 
 	#####################
 	## RooFit Settings ##
@@ -125,7 +125,8 @@ def main():
 	######################
 	## Load Source Data ##
 	######################
-	adc_to_keV = 2.00114445451e-3;
+	adc_to_keV = 2.00114445451e-3; #Production run 1 value.
+	#adc_to_keV = 7.1856e-4; #Production run 2 value.
 	sourceChain = ROOT.TChain( dataTreeName )
 	file = open( sourceFilename, 'r' )
 	for line in file:
@@ -271,7 +272,7 @@ def main():
 			#Reduce integrator for plotting, massively speeds plotting
 			ROOT.RooAbsReal.defaultIntegratorConfig().setEpsAbs(1e-5)
 			ROOT.RooAbsReal.defaultIntegratorConfig().setEpsRel(1e-5)
-			frame = energyVar.frame(0,8,8)
+			frame = energyVar.frame(0,12,12)
 			#energy = enrgList[bdNum-1]
 			frame.SetTitle("Backing Detector "+str(bdNum))
 			frame.GetXaxis().SetTitle("Energy [keVee]")
@@ -317,7 +318,7 @@ def main():
 			#frame.GetYaxis.SetRangeUser(0.1,1e5)
 			frame.Draw()
 			frame.SetMinimum(0.001)
-			frame.SetMaximum(10e4)
+			frame.SetMaximum(20e4)
       
 			#Add legend
 			leg = ROOT.TLegend(0.62,0.67,0.87,0.85); 
@@ -333,12 +334,12 @@ def main():
 			c1.SetLogy()
 			c1.Modified()
 			c1.Update()
-			c1.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(bdNum)+".png")
+			c1.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(bdNum)+"_pr2.png")
 				
 			#Make Residuals Plot.
 			c2=ROOT.TCanvas("c2","c2")
 			c2.cd()
-			resFrame = energyVar.frame(0,8,8)
+			resFrame = energyVar.frame(0,12,12)
 			resFrame.SetTitle("")
 			resFrame.GetXaxis().CenterTitle();
 			resFrame.GetXaxis().SetTitle("keVee");
@@ -349,7 +350,7 @@ def main():
 			#c2.SetLogy()
 			c2.Modified()
 			c2.Update()
-			c2.SaveAs(plotPath+"residuals_ch"+str(bdNum)+".png")
+			c2.SaveAs(plotPath+"residuals_ch"+str(bdNum)+"_pr2.png")
 
 			#Make a linear scale plot.
 			c3=ROOT.TCanvas("c3","c3")
@@ -357,10 +358,10 @@ def main():
 			frame.Draw()
 			leg.Draw("same")
 			frame.SetMinimum(0)
-			frame.SetMaximum(400)
+			frame.SetMaximum(5000)
 			c3.Modified()
 			c3.Update()
-			c3.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(bdNum)+"linear.png")
+			c3.SaveAs(plotPath+"bestFit_simultaneous_ch"+str(bdNum)+"linear_pr2.png")
       
 			#Add legend
 			leg = ROOT.TLegend(0.62,0.67,0.87,0.85); 
@@ -432,7 +433,7 @@ def main():
 	samples=sampler.flatchain
 	lnprobs = sampler.lnprobability[:,:]
 	flatLnprobs = lnprobs.reshape(-1)
-	with open(plotPath+"sampler_simultaneous_ch"+str(bdNum)+".csv", 'w') as sampleOutFile:
+	with open(plotPath+"sampler_simultaneous_ch"+str(bdNum)+"__pr2.csv", 'w') as sampleOutFile:
 		theWriter = csvlib.writer(sampleOutFile, delimiter=',')
 		for sampleLine, llval in zip(samples, flatLnprobs):
 			theWriter.writerow(numpy.append(sampleLine,llval))
@@ -445,12 +446,12 @@ def main():
 		axes = fig.add_subplot(gs[i,:])
 		axes.plot(sampler.chain[:,:,i].T, '-', color='k', alpha=0.3)
 		axes.set_title(labels[i])
-	plt.savefig(plotPath+"traceplots_simultaneous_bd"+str(bdNum)+".png")
+	plt.savefig(plotPath+"traceplots_simultaneous_bd"+str(bdNum)+"_pr2.png")
 
 	#CORNER PLOT HERE 
 	samples=sampler.flatchain
 	fig = corner.corner(samples, labels=labels, ranges=ranges, quantiles=[0.16,0.5,0.84],show_titles=True,title_kwargs={'fontsize':12})
-	fig.savefig(plotPath+"corner_simultaneous_bd"+str(bdNum)+".png")
+	fig.savefig(plotPath+"corner_simultaneous_bd"+str(bdNum)+"_pr2.png")
 
 	#CALCULATE QUANTILES HERE
 	bestFitValues=[]
