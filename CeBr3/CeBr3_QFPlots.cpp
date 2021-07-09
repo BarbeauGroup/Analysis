@@ -639,9 +639,9 @@ void makePlots(){
 	ce_qf_graph->SetMarkerStyle(20);
 	yield_graph->SetMarkerColor(46);
 	yield_graph->SetMarkerStyle(21);
-	br_yield_graph->SetMarkerColor(30);
+	br_yield_graph->SetMarkerColor(9);
 	br_yield_graph->SetMarkerStyle(20);
-	ce_yield_graph->SetMarkerColor(40);
+	ce_yield_graph->SetMarkerColor(8);
 	ce_yield_graph->SetMarkerStyle(20);
 	//qf_graph_pr2->SetMarkerColor(40);
 	//qf_graph_pr2->SetMarkerStyle(21);
@@ -665,11 +665,11 @@ void makePlots(){
 	br_outlier->SetMarkerStyle(24);
 	ce_outlier->SetMarkerColor(40);
 	ce_outlier->SetMarkerStyle(24);
-	yield_outlier->SetMarkerColor(46);
+	yield_outlier->SetMarkerColor(kGreen-10);
 	yield_outlier->SetMarkerStyle(25);
-	br_yield_outlier->SetMarkerColor(30);
+	br_yield_outlier->SetMarkerColor(9);
 	br_yield_outlier->SetMarkerStyle(24);
-	ce_yield_outlier->SetMarkerColor(40);
+	ce_yield_outlier->SetMarkerColor(8);
 	ce_yield_outlier->SetMarkerStyle(24);
 	gamma_graph->SetMarkerColor(9);
 	gamma_graph->SetMarkerStyle(21);
@@ -743,7 +743,7 @@ void makePlots(){
 	TCanvas* c2 = new TCanvas("c2","Quenching Factor in CeBr3");
 	c2->cd();
 	qf_MultiGraph->Draw("a");
-	//c2->BuildLegend(0.62,0.67,0.87,0.85);
+	c2->BuildLegend(0.62,0.67,0.87,0.85);
 	c2->Modified();
 	c2->Update();
 
@@ -751,14 +751,19 @@ void makePlots(){
 	c3->cd();
 	yield_MultiGraph->Draw("a");
 	TLine* highQF = new TLine(0,0,50,5);
-	highQF->SetLineColor(17);
+	highQF->SetLineColor(33);
 	highQF->SetLineWidth(3);
+	TLine* medQF = new TLine(0,0,83.33,5);
+	medQF->SetLineColor(33);
+	medQF->SetLineWidth(3);
+	medQF->SetLineStyle(9);
 	TLine* lowQF = new TLine(0,0,85,1.7);
-	lowQF->SetLineColor(17);
+	lowQF->SetLineColor(33);
 	lowQF->SetLineWidth(3);
 	highQF->Draw("same");
 	lowQF->Draw("same");
-	//c2->BuildLegend(0.62,0.67,0.87,0.85);
+	medQF->Draw("same");
+	c3->BuildLegend(0.62,0.67,0.87,0.85);
 	c3->Modified();
 	c3->Update();
 	
