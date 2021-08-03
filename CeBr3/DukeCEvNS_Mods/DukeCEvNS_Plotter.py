@@ -24,9 +24,9 @@ import os
 from matplotlib import pyplot as plt
 
 #Check that the user supplied a filename.
-if len(sys.argv) != 2:
+if len(sys.argv) != 3:
 	print( "\nERROR: Incorrect call." )
-	print( "Correct usage is python DukeCEvNS_Plotter.py <Path to parsed Duke CEvNS Files> " )
+	print( "Correct usage is python DukeCEvNS_Plotter.py <Path to parsed Duke CEvNS Files>  <Base name for output files>" )
 	
 #Open the folder containing all three (parsed) Duke CEvNS Sims
 path = sys.argv[1]
@@ -42,7 +42,7 @@ brHist = brFile.Get("cevnsHist")
 
 #Make a canvas to plot on.
 c1=ROOT.TCanvas("c1","c1")
-avgHist.GetXaxis().SetTitle("Recoil Energy [keVnr]")
+avgHist.GetXaxis().SetTitle("Recoil Energy [keVee]")
 avgHist.GetXaxis().CenterTitle()
 avgHist.GetYaxis().SetTitle("\\mbox{Counts / 100 eV } $\cdot$ \\mbox{kg} $\cdot$ \\mbox{year}")
 avgHist.GetYaxis().CenterTitle()
@@ -50,7 +50,7 @@ avgHist.SetLineWidth(3)
 avgHist.SetLineColor(46)
 avgHist.SetTitle("SNS CEvNS Spectra (CeBr_{3})")
 avgHist.SetStats(0)
-ceHist.GetXaxis().SetTitle("Recoil Energy [keVnr]")
+ceHist.GetXaxis().SetTitle("Recoil Energy [keVee]")
 ceHist.GetXaxis().CenterTitle()
 ceHist.GetYaxis().SetTitle("\\mbox{Counts / 100 eV } $\cdot$ \\mbox{kg} $\cdot$ \\mbox{year}")
 ceHist.GetYaxis().CenterTitle()
@@ -58,7 +58,7 @@ ceHist.SetLineWidth(3)
 ceHist.SetLineColor(30)
 ceHist.SetTitle("SNS CEvNS Spectra (CeBr_{3})")
 ceHist.SetStats(0)
-brHist.GetXaxis().SetTitle("Recoil Energy [keVnr]")
+brHist.GetXaxis().SetTitle("Recoil Energy [keVee]")
 brHist.GetXaxis().CenterTitle()
 brHist.GetYaxis().SetTitle("\\mbox{Counts / 100 eV } $\cdot$ \\mbox{kg} $\cdot$ \\mbox{year}")
 brHist.GetYaxis().CenterTitle()
@@ -67,11 +67,18 @@ brHist.SetLineColor(4)
 brHist.SetTitle("SNS CEvNS Spectra (CeBr_{3})")
 brHist.SetStats(0)
 
+#Build a line to show threshold.
+thresh = ROOT.TLine(0.55,0,0.55,40)
+thresh.SetLineStyle(9)
+thresh.SetLineWidth(3)
+thresh.SetLineColor(12)
+
 #Build a legend.
 leg = ROOT.TLegend(0.5,0.55,0.87,0.85); 
 leg.AddEntry(avgHist,"Quenching Factors derived from both nuclei.","l")
 leg.AddEntry(ceHist,"Quenching Factors derived from cerium recoils.","l")
 leg.AddEntry(brHist,"Quenching Factors derived from bromine recoils.","l")
+leg.AddEntry(thresh,"10 PE Threshold","l")
 #gStyle.SetLegendTextSize(3.);
 
 #Draw.
@@ -80,11 +87,12 @@ brHist.Draw("hist")
 ceHist.Draw("hist,same")
 avgHist.Draw("hist,same")
 leg.Draw()
+thresh.Draw()
 c1.Modified()
 c1.Update()
 
 #Save the output. 
-outputFilename = path + "CEBr3_SNS_Spectra"
+outputFilename = path + sys.argv[2]
 c1.SaveAs(outputFilename+".png")
 rootFile = ROOT.TFile( outputFilename + ".root", "recreate" )
 rootFile.Write()
@@ -94,7 +102,6 @@ avgFile.Close()
 ceFile.Close()
 brFile.Close()
 rootFile.Close()
-
 
 
 
